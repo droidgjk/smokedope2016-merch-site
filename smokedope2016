@@ -1,0 +1,2636 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    target: 'es2019',
+    sourcemap: false,
+  },
+})
+
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,jsx}'],
+  theme: {
+    extend: {
+      colors: {
+        // Change the accent in ONE place: src/index.css (--accent). Tailwind reads it from there.
+        ink: '#0b0b0a',
+        coal: '#141413',
+        ash: '#1d1d1b',
+        smoke: '#8a8a82',
+        bone: '#e9e7df',
+        acid: 'rgb(var(--accent) / <alpha-value>)',
+      },
+      fontFamily: {
+        display: ['"Big Shoulders Display"', 'Impact', '"Arial Narrow"', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+      },
+      borderRadius: { DEFAULT: '0', sm: '0', md: '0', lg: '0', xl: '0', full: '9999px' },
+    },
+  },
+  plugins: [],
+}
+
+# smokedope2016 Merch
+
+Dark, lo-fi streetwear merch store. React 18 + Vite + Tailwind 3, Stripe Checkout, no database.
+
+## 1. Run it locally (2 minutes)
+
+```bash
+npm install
+npm run dev          # http://localhost:5173
+```
+
+Requires Node 20 or newer. The shop, cart, drop countdown and all pages work immediately with placeholder data.
+Checkout needs steps 3 and 4 below.
+
+## 2. Make it yours (all content lives in 3 files)
+
+| File | What you change |
+| --- | --- |
+| `src/data/products.json` | Products, prices (in **cents**), sizes, stock, photos, drop locks |
+| `src/data/site.config.js` | Brand name, next drop countdown, socials, bio, FAQ, lookbook, policies, "Unofficial fan merch" switch |
+| `src/data/commerce.json` | Discount codes, shipping rates, allowed countries. Shared with the checkout server |
+
+Things to know:
+
+- **Stock badges:** `stock: 0` shows SOLD OUT, `1` to `5` shows "Only N left".
+- **Drop mode:** add `"dropAt": "2026-11-13T17:00:00Z"` to any product. It is locked (no add to cart, countdown shown) until that moment, on the site **and** on the checkout server. Change `NEXT_DROP.at` in `site.config.js` for the hero countdown.
+- **Accent color:** one line in `src/index.css` (`--accent`). Toxic green is default. Hot red is `255 45 45`, chrome silver is `200 205 210`.
+- **Official store?** Set `unofficial: false` in `site.config.js` to remove the footer notice.
+- **Real photos:** export WebP (about 1200px wide, under 150 KB), put them in `public/img/`, list them in `products.json`, for example `"images": ["/img/hoodie-front.webp", "/img/hoodie-back.webp", "/img/hoodie-detail.webp"]`. Same for the lookbook in `site.config.js`. Until then, original generated placeholders are shown. No logos, covers or photos of the artist are included.
+- **Policy pages** contain template text only. Have them reviewed before launch.
+
+## 3. Stripe
+
+1. Create a Stripe account, then copy your **test** secret key (`sk_test_...`) from the Stripe dashboard under Developers, API keys.
+2. Copy `.env.example` to `.env` for local reference. Real keys go in your host's environment settings, never in git.
+3. In Vercel: Project, Settings, Environment Variables. Add:
+   - `STRIPE_SECRET_KEY` = your key
+   - `SITE_URL` = `https://your-domain.com`
+4. Test with card `4242 4242 4242 4242`, any future date, any CVC. Switch to the live key when ready.
+
+How it works: the browser sends only product ids, sizes and quantities to `/api/create-checkout-session`. The server looks up prices, stock, drop locks, shipping and discount codes itself, creates a Stripe Checkout session and returns its URL. Customers cannot change prices from the browser. Stripe collects email, shipping address and payment (guest checkout).
+
+Local test of the checkout function: `npm i -g vercel`, then `vercel dev` instead of `npm run dev`.
+
+## 4. Deploy (Vercel, easiest)
+
+```bash
+npm i -g vercel
+vercel          # first deploy, answer the prompts
+vercel --prod
+```
+
+`vercel.json` already routes every page to `index.html` and keeps `/api/*` working.
+
+**Netlify / Cloudflare:** the frontend deploys as is (add a rewrite `/* /index.html 200`). Move `api/create-checkout-session.js` into that host's functions folder and adapt the handler signature.
+
+## 5. Forms (newsletter, SMS, contact)
+
+Until you set an endpoint, forms run in demo mode and send nothing. In `.env` (and your host settings):
+
+```
+VITE_SIGNUP_ENDPOINT=https://...   # receives { channel: 'email'|'sms', contact, source }
+VITE_CONTACT_ENDPOINT=https://...  # receives { name, email, message }
+```
+
+Formspree, Basin or a Klaviyo/Mailchimp serverless proxy all work. SMS marketing needs a provider and the consent checkbox that is already included.
+
+## 6. SEO and link previews
+
+- Every page sets its own title, meta description, canonical, Open Graph and Twitter tags. Product pages also output Product structured data (price, availability).
+- Replace `YOUR-DOMAIN.com` in `index.html`, then run `SITE_URL=https://your-domain.com npm run sitemap` to regenerate `public/sitemap.xml` and `public/robots.txt`. Submit the sitemap in Google Search Console.
+- Replace `public/og.png` (1200 x 630) with your own artwork.
+- **Important for Instagram/TikTok/iMessage previews:** this is a client-side app. Google renders it fine, but many social crawlers do not run JavaScript and will show the default tags from `index.html` for every link. If per-product link previews matter, prerender the pages (for example with `vite-plugin-prerender`) or move to Next.js. The data files and components carry over.
+
+## 7. Performance and accessibility notes
+
+- Routes are code-split. Placeholder art is inline SVG (no image requests). Real images use `loading="lazy"` and `decoding="async"`, with the first row eager.
+- Pinch zoom is not blocked. Keyboard navigation, visible focus, skip link, labelled forms, `aria-live` status messages, a focus-trapped cart dialog, and `prefers-reduced-motion` support are included.
+- Run Lighthouse in Chrome DevTools after adding your real images and check the results.
+
+## Project layout
+
+```
+api/create-checkout-session.js   Stripe server function (validates everything)
+src/data/                        products.json, site.config.js, commerce.json
+src/lib/                         cart, checkout call, SEO hook, countdown
+src/components/                  Layout, CartDrawer, ProductCard, ProductArt, ...
+src/pages/                       Home, Shop, Product, Lookbook, About, Policy, ...
+public/                          favicon, og.png, robots.txt, sitemap.xml
+```
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- NOTE: zoom is intentionally NOT blocked (no user-scalable=no / maximum-scale). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b0b0a" />
+
+    <!-- Default SEO. Each page overrides these at runtime via src/lib/seo.js -->
+    <title>smokedope2016 Merch | Limited drops</title>
+    <meta name="description" content="Official-style merch store for smokedope2016: hoodies, tees, beanies and limited drops. Ships worldwide." />
+    <link rel="canonical" href="https://YOUR-DOMAIN.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="smokedope2016 Merch" />
+    <meta property="og:title" content="smokedope2016 Merch | Limited drops" />
+    <meta property="og:description" content="Hoodies, tees, beanies and limited drops. Ships worldwide." />
+    <meta property="og:url" content="https://YOUR-DOMAIN.com/" />
+    <!-- Replace /og.png with your own 1200x630 image -->
+    <meta property="og:image" content="https://YOUR-DOMAIN.com/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>This store needs JavaScript. Please enable it to shop.</noscript>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/((?!api/|assets/|.*\\..*).*)", "destination": "/index.html" }
+  ]
+}
+
+node_modules
+dist
+.env
+.env.local
+.vercel
+
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+{
+  "name": "smokedope2016-merch",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "sitemap": "node scripts/sitemap.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.26.2",
+    "stripe": "16.12.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.1",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.47",
+    "tailwindcss": "3.4.13",
+    "vite": "5.4.8"
+  }
+}
+
+# ---- Frontend (safe to expose, prefixed with VITE_) ----
+# Public URL of your deployed site, no trailing slash. Used for canonical/OG links.
+VITE_SITE_URL=https://YOUR-DOMAIN.com
+# Where the cart is sent to start Stripe Checkout. Default works on Vercel.
+VITE_CHECKOUT_ENDPOINT=/api/create-checkout-session
+# Optional: endpoints that receive newsletter / contact form posts (Formspree, Mailchimp proxy, your own API).
+VITE_SIGNUP_ENDPOINT=
+VITE_CONTACT_ENDPOINT=
+
+# ---- Server only (set in Vercel/Netlify env settings, NEVER commit real keys) ----
+STRIPE_SECRET_KEY=sk_test_REPLACE_ME
+SITE_URL=https://YOUR-DOMAIN.com
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* ONE accent color for the whole site. Space-separated RGB so Tailwind can use opacity.
+     Toxic green (default): 182 255 26
+     Hot red:               255 45 45
+     Chrome silver:         200 205 210   */
+  --accent: 182 255 26;
+  color-scheme: dark;
+}
+
+html {
+  background: #0b0b0a;
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #0b0b0a;
+  color: #e9e7df;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* Film grain overlay. Pure CSS/SVG data URI, no image request. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.09;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation: grain 1.2s steps(6) infinite;
+}
+
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-2%, 1%); }
+  40% { transform: translate(1%, -2%); }
+  60% { transform: translate(-1%, 2%); }
+  80% { transform: translate(2%, -1%); }
+  100% { transform: translate(0, 0); }
+}
+
+::selection { background: rgb(var(--accent)); color: #0b0b0a; }
+
+:focus-visible {
+  outline: 2px solid rgb(var(--accent));
+  outline-offset: 3px;
+}
+
+@layer components {
+  .wrap { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; }
+
+  .label {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.22em] text-smoke;
+  }
+
+  .h-display {
+    @apply font-display font-black uppercase leading-[0.86] tracking-tight;
+  }
+
+  .btn {
+    @apply inline-flex min-h-[48px] items-center justify-center gap-2 border border-bone px-6 py-3 font-mono text-[13px] font-semibold uppercase tracking-[0.18em] text-bone transition-colors;
+  }
+  .btn:hover:not(:disabled) { @apply border-acid bg-acid text-ink; }
+  .btn:disabled { @apply cursor-not-allowed border-smoke/40 text-smoke/60; }
+  .btn-solid { @apply border-acid bg-acid text-ink; }
+  .btn-solid:hover:not(:disabled) { @apply bg-bone border-bone text-ink; }
+  .btn-solid:disabled { @apply bg-transparent; }
+
+  .field {
+    @apply min-h-[48px] w-full border border-smoke/50 bg-coal px-4 py-3 font-mono text-[14px] text-bone placeholder:text-smoke/70;
+  }
+  .field:focus { @apply border-acid outline-none; }
+
+  .chip {
+    @apply inline-flex min-h-[40px] min-w-[44px] items-center justify-center border border-smoke/40 px-3 font-mono text-[12px] uppercase tracking-widest text-bone transition-colors;
+  }
+  .chip:hover { @apply border-acid; }
+  .chip[aria-pressed='true'], .chip[aria-checked='true'] { @apply border-acid bg-acid text-ink; }
+  .chip:disabled, .chip[aria-disabled='true'] { @apply cursor-not-allowed border-smoke/20 text-smoke/50 line-through; }
+
+  .badge {
+    @apply inline-block bg-ink/90 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.2em];
+  }
+}
+
+/* Glitch hover. Add class="glitch" and data-text="same text". */
+.glitch { position: relative; display: inline-block; }
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.glitch::before { color: rgb(var(--accent)); }
+.glitch::after { color: #ff2d55; }
+.glitch:hover::before,
+.glitch:focus-visible::before,
+a:hover > .glitch::before,
+a:focus-visible > .glitch::before {
+  opacity: 0.9;
+  animation: glitch-a 0.38s steps(2) infinite;
+}
+.glitch:hover::after,
+.glitch:focus-visible::after,
+a:hover > .glitch::after,
+a:focus-visible > .glitch::after {
+  opacity: 0.7;
+  animation: glitch-b 0.38s steps(2) infinite;
+}
+@keyframes glitch-a {
+  0% { transform: translate(-2px, 0); clip-path: inset(10% 0 60% 0); }
+  50% { transform: translate(2px, 1px); clip-path: inset(55% 0 15% 0); }
+  100% { transform: translate(-1px, -1px); clip-path: inset(30% 0 40% 0); }
+}
+@keyframes glitch-b {
+  0% { transform: translate(2px, 0); clip-path: inset(60% 0 10% 0); }
+  50% { transform: translate(-2px, -1px); clip-path: inset(5% 0 70% 0); }
+  100% { transform: translate(1px, 1px); clip-path: inset(40% 0 30% 0); }
+}
+
+/* Marquee */
+.marquee { overflow: hidden; }
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 28s linear infinite;
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* Slow smoke drift behind the hero */
+.smoke {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.35;
+  animation: drift 22s ease-in-out infinite alternate;
+}
+@keyframes drift {
+  from { transform: translate3d(-6%, 0, 0) scale(1); }
+  to { transform: translate3d(8%, -6%, 0) scale(1.15); }
+}
+
+.drawer { transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.scrim { transition: opacity 0.28s ease; }
+
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details[open] .plus { transform: rotate(45deg); }
+.plus { transition: transform 0.2s; }
+
+input[type='range'] { accent-color: rgb(var(--accent)); }
+
+.sr-only-focusable:not(:focus):not(:focus-within) {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  body::after { animation: none; }
+  .marquee-track { animation: none; }
+  .smoke { animation: none; }
+  .glitch::before, .glitch::after { animation: none !important; }
+  .drawer, .scrim { transition: none; }
+}
+
+import { lazy, Suspense } from 'react'
+import { Route, Routes } from 'react-router-dom'
+import Layout from './components/Layout.jsx'
+import Home from './pages/Home.jsx'
+
+// Everything except Home is code-split so the first load stays small.
+const Shop = lazy(() => import('./pages/Shop.jsx'))
+const Product = lazy(() => import('./pages/Product.jsx'))
+const Lookbook = lazy(() => import('./pages/Lookbook.jsx'))
+const About = lazy(() => import('./pages/About.jsx'))
+const Policy = lazy(() => import('./pages/Policy.jsx'))
+const CheckoutResult = lazy(() => import('./pages/CheckoutResult.jsx'))
+const NotFound = lazy(() => import('./pages/NotFound.jsx'))
+
+export default function App() {
+  return (
+    <Suspense fallback={<div className="wrap py-32 text-smoke" role="status">Loading…</div>}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="shop" element={<Shop />} />
+          <Route path="product/:slug" element={<Product />} />
+          <Route path="lookbook" element={<Lookbook />} />
+          <Route path="about" element={<About />} />
+          <Route path="policy/:key" element={<Policy />} />
+          <Route path="checkout/success" element={<CheckoutResult status="success" />} />
+          <Route path="checkout/cancelled" element={<CheckoutResult status="cancelled" />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
+    </Suspense>
+  )
+}
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import App from './App.jsx'
+import { CartProvider } from './lib/cart.jsx'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <CartProvider>
+        <App />
+      </CartProvider>
+    </BrowserRouter>
+  </React.StrictMode>
+)
+
+export default function Marquee({ items, className = '' }) {
+  const row = (
+    <ul className="flex shrink-0 items-center" aria-hidden="true">
+      {items.map((t, i) => (
+        <li key={i} className="flex items-center whitespace-nowrap">
+          <span className="px-5 font-display text-2xl font-black uppercase tracking-wide sm:text-3xl">{t}</span>
+          <span className="text-xl">•</span>
+        </li>
+      ))}
+    </ul>
+  )
+  return (
+    <div className={`marquee border-y border-ink bg-acid py-2 text-ink ${className}`}>
+      <span className="sr-only">{items.join(', ')}</span>
+      <div className="marquee-track">
+        {row}
+        {row}
+      </div>
+    </div>
+  )
+}
+
+import { Link } from 'react-router-dom'
+import ProductImage from './ProductImage.jsx'
+import { isLocked, money, stockState } from '../lib/format.js'
+
+function dropLabel(iso) {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }).toUpperCase()
+}
+
+export default function ProductCard({ product, now, eager = false }) {
+  const locked = isLocked(product, now)
+  const state = stockState(product)
+
+  return (
+    <Link
+      to={`/product/${product.slug}`}
+      className="group block focus-visible:outline-offset-4"
+      aria-label={`${product.name}, ${money(product.price)}${locked ? ', locked until drop' : state === 'sold-out' ? ', sold out' : ''}`}
+    >
+      <div className="relative aspect-[4/5] overflow-hidden border border-smoke/25 bg-coal transition-colors group-hover:border-acid group-focus-visible:border-acid">
+        <div className={`h-full w-full transition-transform duration-500 group-hover:scale-[1.04] ${state === 'sold-out' || locked ? 'opacity-60' : ''}`}>
+          <ProductImage product={product} index={0} eager={eager} />
+        </div>
+
+        <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+          {locked && <span className="badge text-acid">Drops {dropLabel(product.dropAt)}</span>}
+          {!locked && state === 'sold-out' && <span className="badge text-bone">Sold out</span>}
+          {!locked && state === 'low' && <span className="badge text-acid">Only {product.stock} left</span>}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-start justify-between gap-3">
+        <h3 className="glitch font-display text-xl font-black uppercase leading-tight tracking-wide" data-text={product.name}>
+          {product.name}
+        </h3>
+        <p className="shrink-0 pt-0.5 text-[14px] tabular-nums text-bone">{money(product.price)}</p>
+      </div>
+    </Link>
+  )
+}
+
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useCart } from '../lib/cart.jsx'
+import { money } from '../lib/format.js'
+import { SHIPPING } from '../data/site.config.js'
+import { startCheckout } from '../lib/checkout.js'
+import ProductImage from './ProductImage.jsx'
+
+export default function CartDrawer() {
+  const cart = useCart()
+  const { open, setOpen, lines } = cart
+  const closeRef = useRef(null)
+  const panelRef = useRef(null)
+  const lastFocus = useRef(null)
+  const [codeInput, setCodeInput] = useState('')
+  const [codeMsg, setCodeMsg] = useState({ ok: true, message: '' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  // Focus handling + Escape + simple focus trap + scroll lock
+  useEffect(() => {
+    if (!open) return undefined
+    lastFocus.current = document.activeElement
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    closeRef.current?.focus()
+
+    function onKey(e) {
+      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Tab' && panelRef.current) {
+        const f = panelRef.current.querySelectorAll('a[href], button:not([disabled]), input, select, [tabindex]:not([tabindex="-1"])')
+        if (!f.length) return
+        const first = f[0]
+        const last = f[f.length - 1]
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+      lastFocus.current?.focus?.()
+    }
+  }, [open, setOpen])
+
+  async function checkout() {
+    setBusy(true)
+    setError('')
+    try {
+      const { url } = await startCheckout(lines, cart.code)
+      window.location.href = url
+    } catch (e) {
+      setError(e.message)
+      setBusy(false)
+    }
+  }
+
+  function submitCode(e) {
+    e.preventDefault()
+    const r = cart.applyCode(codeInput)
+    setCodeMsg(r)
+    if (r.ok) setCodeInput('')
+  }
+
+  const toFree = Math.max(0, SHIPPING.freeOver - (cart.subtotal - cart.discountAmount))
+
+  return (
+    <div className={`fixed inset-0 z-50 ${open ? '' : 'pointer-events-none'}`} aria-hidden={!open}>
+      <div
+        className={`scrim absolute inset-0 bg-black/70 ${open ? 'opacity-100' : 'opacity-0'}`}
+        onClick={() => setOpen(false)}
+      />
+      <aside
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Shopping cart"
+        className={`drawer absolute right-0 top-0 flex h-full w-full max-w-[440px] flex-col border-l border-smoke/40 bg-ink ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        {...(open ? {} : { inert: '' })}
+      >
+        <header className="flex items-center justify-between border-b border-smoke/30 px-5 py-4">
+          <h2 className="h-display text-3xl">Cart <span className="text-acid">({cart.count})</span></h2>
+          <button ref={closeRef} className="chip" onClick={() => setOpen(false)} aria-label="Close cart">
+            Close
+          </button>
+        </header>
+
+        {lines.length === 0 ? (
+          <div className="flex flex-1 flex-col items-start justify-center gap-4 px-5">
+            <p className="h-display text-5xl text-smoke">Empty.</p>
+            <p className="text-smoke">Nothing here yet. Fix that.</p>
+            <Link to="/shop" className="btn btn-solid" onClick={() => setOpen(false)}>
+              Shop the drop
+            </Link>
+          </div>
+        ) : (
+          <>
+            <ul className="flex-1 divide-y divide-smoke/20 overflow-y-auto px-5">
+              {lines.map((l) => (
+                <li key={`${l.id}-${l.size}`} className="flex gap-4 py-4">
+                  <Link to={`/product/${l.product.slug}`} onClick={() => setOpen(false)} className="block h-24 w-20 shrink-0 overflow-hidden border border-smoke/25">
+                    <ProductImage product={l.product} index={0} />
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex justify-between gap-2">
+                      <p className="font-display text-lg font-black uppercase leading-tight">{l.product.name}</p>
+                      <p className="tabular-nums">{money(l.product.price * l.qty)}</p>
+                    </div>
+                    <p className="label mt-1">Size {l.size}</p>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center border border-smoke/40">
+                        <button className="h-10 w-10 hover:bg-acid hover:text-ink" aria-label={`Decrease quantity of ${l.product.name}`} onClick={() => cart.setQty(l.id, l.size, l.qty - 1)}>−</button>
+                        <span className="w-8 text-center tabular-nums" aria-live="polite">{l.qty}</span>
+                        <button className="h-10 w-10 hover:bg-acid hover:text-ink disabled:opacity-40" disabled={l.qty >= Math.min(l.product.stock, 10)} aria-label={`Increase quantity of ${l.product.name}`} onClick={() => cart.setQty(l.id, l.size, l.qty + 1)}>+</button>
+                      </div>
+                      <button className="label underline underline-offset-4 hover:text-acid" onClick={() => cart.remove(l.id, l.size)}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            <div className="space-y-4 border-t border-smoke/30 px-5 py-5">
+              {toFree > 0 ? (
+                <p className="text-[12px] text-smoke">Add {money(toFree)} more for free shipping.</p>
+              ) : (
+                <p className="text-[12px] text-acid">Free shipping unlocked.</p>
+              )}
+
+              <form onSubmit={submitCode} className="flex gap-2">
+                <label htmlFor="discount-code" className="sr-only">Discount code</label>
+                <input id="discount-code" className="field uppercase" placeholder="DISCOUNT CODE" value={codeInput} onChange={(e) => setCodeInput(e.target.value)} autoComplete="off" />
+                <button className="btn shrink-0 !px-4">Apply</button>
+              </form>
+              <p role="status" aria-live="polite" className={`min-h-[1rem] text-[12px] ${codeMsg.ok ? 'text-acid' : 'text-[#ff6b6b]'}`}>
+                {cart.discount ? (
+                  <>
+                    {cart.code}: {cart.discount.label}{' '}
+                    <button className="underline underline-offset-4" onClick={cart.clearCode}>remove</button>
+                  </>
+                ) : (
+                  codeMsg.message
+                )}
+              </p>
+
+              <dl className="space-y-1 text-[14px]">
+                <div className="flex justify-between"><dt className="text-smoke">Subtotal</dt><dd className="tabular-nums">{money(cart.subtotal)}</dd></div>
+                {cart.discountAmount > 0 && (
+                  <div className="flex justify-between text-acid"><dt>Discount</dt><dd className="tabular-nums">−{money(cart.discountAmount)}</dd></div>
+                )}
+                <div className="flex justify-between"><dt className="text-smoke">Shipping</dt><dd className="tabular-nums">{cart.shipping === 0 ? 'Free' : money(cart.shipping)}</dd></div>
+                <div className="flex justify-between border-t border-smoke/30 pt-2 text-lg"><dt className="font-display font-black uppercase">Total</dt><dd className="tabular-nums">{money(cart.total)}</dd></div>
+              </dl>
+
+              <button className="btn btn-solid w-full" onClick={checkout} disabled={busy}>
+                {busy ? 'Redirecting…' : 'Checkout'}
+              </button>
+              <p className="text-center text-[11px] text-smoke">Guest checkout. Secure payment by Stripe. Taxes and duties calculated by destination.</p>
+              {error && <p role="alert" className="text-[13px] text-[#ff6b6b]">{error}</p>}
+            </div>
+          </>
+        )}
+      </aside>
+    </div>
+  )
+}
+
+import { useState } from 'react'
+
+const ENDPOINT = import.meta.env.VITE_SIGNUP_ENDPOINT
+
+/**
+ * Drop alert signup (email or SMS).
+ * PLUG IN: set VITE_SIGNUP_ENDPOINT to a URL that accepts JSON { channel, contact, source }.
+ * Easy options: a Formspree/Basin endpoint, a Mailchimp/Klaviyo serverless proxy, or your own API.
+ * SMS marketing needs explicit consent (the checkbox) and a provider like Postscript/Klaviyo.
+ */
+export default function SignupForm({ source = 'home', compact = false }) {
+  const [channel, setChannel] = useState('email')
+  const [contact, setContact] = useState('')
+  const [consent, setConsent] = useState(false)
+  const [trap, setTrap] = useState('')
+  const [state, setState] = useState({ status: 'idle', message: '' })
+
+  const valid =
+    channel === 'email'
+      ? /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contact.trim())
+      : /^\+?[0-9 ()-]{7,18}$/.test(contact.trim()) && consent
+
+  async function onSubmit(e) {
+    e.preventDefault()
+    if (trap) return // honeypot: bots fill hidden fields
+    if (!valid) {
+      setState({
+        status: 'error',
+        message: channel === 'email' ? 'Enter a valid email address.' : 'Enter a valid phone number and tick the consent box.',
+      })
+      return
+    }
+    setState({ status: 'loading', message: '' })
+    try {
+      if (ENDPOINT) {
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channel, contact: contact.trim(), source }),
+        })
+        if (!res.ok) throw new Error('bad status')
+      } else {
+        // Demo mode: no endpoint configured yet, nothing is sent anywhere.
+        await new Promise((r) => setTimeout(r, 400))
+      }
+      setState({ status: 'ok', message: "You're on the list. We'll text or email you before the next drop." })
+      setContact('')
+    } catch {
+      setState({ status: 'error', message: 'Could not sign you up right now. Try again in a minute.' })
+    }
+  }
+
+  const id = `signup-${source}`
+
+  return (
+    <form onSubmit={onSubmit} noValidate className={compact ? 'space-y-3' : 'space-y-4'}>
+      <div role="radiogroup" aria-label="How should we reach you?" className="flex gap-2">
+        {['email', 'sms'].map((c) => (
+          <button
+            key={c}
+            type="button"
+            role="radio"
+            aria-checked={channel === c}
+            className="chip"
+            onClick={() => {
+              setChannel(c)
+              setState({ status: 'idle', message: '' })
+            }}
+          >
+            {c === 'email' ? 'Email' : 'SMS'}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <label htmlFor={`${id}-contact`} className="sr-only">
+          {channel === 'email' ? 'Email address' : 'Phone number'}
+        </label>
+        <input
+          id={`${id}-contact`}
+          className="field"
+          type={channel === 'email' ? 'email' : 'tel'}
+          inputMode={channel === 'email' ? 'email' : 'tel'}
+          autoComplete={channel === 'email' ? 'email' : 'tel'}
+          placeholder={channel === 'email' ? 'you@email.com' : '+1 555 000 0000'}
+          value={contact}
+          onChange={(e) => setContact(e.target.value)}
+        />
+        {/* Honeypot, hidden from people */}
+        <input
+          tabIndex={-1}
+          autoComplete="off"
+          aria-hidden="true"
+          className="absolute left-[-9999px] h-0 w-0 opacity-0"
+          name="website"
+          value={trap}
+          onChange={(e) => setTrap(e.target.value)}
+        />
+        <button className="btn btn-solid shrink-0" disabled={state.status === 'loading'}>
+          {state.status === 'loading' ? 'Sending…' : 'Notify me'}
+        </button>
+      </div>
+
+      {channel === 'sms' && (
+        <label htmlFor={`${id}-consent`} className="flex cursor-pointer items-start gap-3 text-[12px] text-smoke">
+          <input
+            id={`${id}-consent`}
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            className="mt-1 h-4 w-4 accent-[rgb(var(--accent))]"
+          />
+          <span>I agree to receive recurring drop alerts by text. Message and data rates may apply. Reply STOP to cancel.</span>
+        </label>
+      )}
+
+      <p role="status" aria-live="polite" className={`min-h-[1.25rem] text-[13px] ${state.status === 'error' ? 'text-[#ff6b6b]' : 'text-acid'}`}>
+        {state.message}
+      </p>
+    </form>
+  )
+}
+
+import ProductArt from './ProductArt.jsx'
+
+/**
+ * Shows a real photo if products.json lists one, otherwise the generated placeholder.
+ * PLUG IN: export photos as WebP (about 1200px wide, under 150KB each), put them in /public/img/
+ * and list them in products.json: "images": ["/img/hoodie-front.webp", "/img/hoodie-back.webp"]
+ */
+export default function ProductImage({ product, index = 0, eager = false, className = '' }) {
+  const src = product.images?.[index]
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={`${product.name}, photo ${index + 1}`}
+        width="800"
+        height="1000"
+        loading={eager ? 'eager' : 'lazy'}
+        decoding="async"
+        fetchpriority={eager ? 'high' : 'auto'}
+        className={`h-full w-full object-cover ${className}`}
+      />
+    )
+  }
+  return <ProductArt product={product} variant={index % 3} className={`h-full w-full ${className}`} />
+}
+
+import { useCountdown } from '../lib/useCountdown.js'
+
+const pad = (n) => String(n).padStart(2, '0')
+
+export default function Countdown({ target, size = 'lg', doneText = 'LIVE NOW' }) {
+  const { done, days, hours, minutes, seconds } = useCountdown(target)
+
+  if (done) {
+    return <p className="h-display text-4xl text-acid sm:text-6xl">{doneText}</p>
+  }
+
+  const parts = [
+    ['Days', pad(days)],
+    ['Hrs', pad(hours)],
+    ['Min', pad(minutes)],
+    ['Sec', pad(seconds)],
+  ]
+  const big = size === 'lg'
+
+  return (
+    <div role="timer" aria-label={`Countdown: ${days} days ${hours} hours ${minutes} minutes ${seconds} seconds`} className="flex gap-2 sm:gap-3">
+      {parts.map(([label, value]) => (
+        <div key={label} className={`flex flex-col items-center border border-smoke/40 bg-coal/70 ${big ? 'min-w-[68px] px-2 py-3 sm:min-w-[96px] sm:px-4' : 'min-w-[56px] px-2 py-2'}`}>
+          <span
+            className={`font-display font-black leading-none tabular-nums text-bone ${big ? 'text-4xl sm:text-6xl' : 'text-3xl'}`}
+            aria-hidden="true"
+          >
+            {value}
+          </span>
+          <span className="label mt-1 !text-[10px]" aria-hidden="true">{label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+import { useEffect, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useCart } from '../lib/cart.jsx'
+import { POLICIES, SITE } from '../data/site.config.js'
+import CartDrawer from './CartDrawer.jsx'
+import SignupForm from './SignupForm.jsx'
+
+const NAV = [
+  { to: '/shop', label: 'Shop' },
+  { to: '/lookbook', label: 'Lookbook' },
+  { to: '/about', label: 'About' },
+]
+
+function ScrollManager() {
+  const { pathname, hash } = useLocation()
+  useEffect(() => {
+    if (hash) {
+      const el = document.getElementById(hash.slice(1))
+      if (el) {
+        el.scrollIntoView()
+        return
+      }
+    }
+    window.scrollTo(0, 0)
+  }, [pathname, hash])
+  return null
+}
+
+function Header() {
+  const { count, setOpen } = useCart()
+  const [menu, setMenu] = useState(false)
+  const { pathname } = useLocation()
+  useEffect(() => setMenu(false), [pathname])
+
+  const link = ({ isActive }) =>
+    `font-mono text-[13px] uppercase tracking-[0.2em] ${isActive ? 'text-acid' : 'text-bone hover:text-acid'}`
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-smoke/30 bg-ink/95 backdrop-blur">
+      <div className="wrap flex h-16 items-center justify-between gap-4">
+        <Link to="/" className="font-display text-2xl font-black uppercase tracking-wide sm:text-3xl" aria-label={`${SITE.name} home`}>
+          <span className="glitch" data-text={SITE.name}>{SITE.name}</span>
+        </Link>
+
+        <nav aria-label="Main" className="hidden items-center gap-8 md:flex">
+          {NAV.map((n) => (
+            <NavLink key={n.to} to={n.to} className={link}>{n.label}</NavLink>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <button className="chip" onClick={() => setOpen(true)} aria-label={`Open cart, ${count} items`}>
+            Cart ({count})
+          </button>
+          <button
+            className="chip md:hidden"
+            aria-expanded={menu}
+            aria-controls="mobile-nav"
+            onClick={() => setMenu((m) => !m)}
+          >
+            {menu ? 'Close' : 'Menu'}
+          </button>
+        </div>
+      </div>
+
+      {menu && (
+        <nav id="mobile-nav" aria-label="Mobile" className="border-t border-smoke/30 bg-ink md:hidden">
+          <ul className="wrap flex flex-col py-2">
+            {NAV.map((n) => (
+              <li key={n.to} className="border-b border-smoke/15 last:border-0">
+                <NavLink to={n.to} className={({ isActive }) => `block py-4 font-display text-4xl font-black uppercase ${isActive ? 'text-acid' : ''}`}>
+                  {n.label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
+    </header>
+  )
+}
+
+function Footer() {
+  return (
+    <footer className="mt-24 border-t border-smoke/30 bg-coal">
+      <div className="wrap grid gap-12 py-14 md:grid-cols-[1.3fr_1fr_1fr]">
+        <div>
+          <p className="h-display text-4xl sm:text-5xl">Drop alerts</p>
+          <p className="mb-5 mt-2 max-w-md text-smoke">Be first to know when something goes live. No spam. Unsubscribe anytime.</p>
+          <SignupForm source="footer" compact />
+        </div>
+
+        <nav aria-label="Footer">
+          <p className="label mb-3">Store</p>
+          <ul className="space-y-2">
+            <li><Link className="hover:text-acid" to="/shop">Shop</Link></li>
+            <li><Link className="hover:text-acid" to="/lookbook">Lookbook</Link></li>
+            <li><Link className="hover:text-acid" to="/about">About</Link></li>
+            <li><Link className="hover:text-acid" to="/about#faq">FAQ</Link></li>
+            <li><Link className="hover:text-acid" to="/about#contact">Contact</Link></li>
+          </ul>
+        </nav>
+
+        <div>
+          <p className="label mb-3">Follow</p>
+          <ul className="space-y-2">
+            {SITE.socials.map((s) => (
+              <li key={s.label}>
+                <a className="hover:text-acid" href={s.href} target="_blank" rel="noopener noreferrer">{s.label} ↗</a>
+              </li>
+            ))}
+          </ul>
+          <p className="label mb-3 mt-8">Policies</p>
+          <ul className="space-y-2">
+            {Object.entries(POLICIES).map(([key, p]) => (
+              <li key={key}><Link className="hover:text-acid" to={`/policy/${key}`}>{p.title}</Link></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="border-t border-smoke/20">
+        <div className="wrap flex flex-col gap-2 py-6 text-[12px] text-smoke sm:flex-row sm:justify-between">
+          <p>© {new Date().getFullYear()} {SITE.storeName}. All rights reserved.</p>
+          {SITE.unofficial && <p>Unofficial fan merch</p>}
+        </div>
+      </div>
+    </footer>
+  )
+}
+
+export default function Layout() {
+  return (
+    <>
+      <a href="#main" className="sr-only-focusable fixed left-2 top-2 z-[200] bg-acid px-4 py-3 font-mono text-ink">
+        Skip to content
+      </a>
+      <ScrollManager />
+      <Header />
+      <main id="main" tabIndex={-1} className="outline-none">
+        <Outlet />
+      </main>
+      <Footer />
+      <CartDrawer />
+    </>
+  )
+}
+
+import { useId } from 'react'
+
+/*
+  PLACEHOLDER ARTWORK. Original generated graphics only: no logos, covers or photos of the artist.
+  Once you have real photos, list them in products.json under "images" and this file is bypassed
+  by <ProductImage /> automatically.
+*/
+
+const SHAPES = {
+  tee: 'M120 70 L170 50 Q200 82 230 50 L280 70 L350 132 L310 178 L280 156 L280 442 L120 442 L120 156 L90 178 L50 132 Z',
+  longsleeve:
+    'M120 70 L170 50 Q200 82 230 50 L280 70 L362 332 L322 348 L281 192 L281 442 L119 442 L119 192 L78 348 L38 332 Z',
+  hoodie:
+    'M112 92 L165 64 L235 64 L288 92 L358 362 L316 374 L283 204 L283 452 L117 452 L117 204 L84 374 L42 362 Z',
+  jacket:
+    'M112 84 L165 62 L200 80 L235 62 L288 84 L358 352 L316 364 L284 202 L284 444 L116 444 L116 202 L84 364 L42 352 Z',
+  beanie: 'M108 318 Q108 128 200 114 Q292 128 292 318 Z',
+  tote: 'M92 176 H308 L318 446 H82 Z',
+  poster: 'M104 62 H296 V438 H104 Z',
+}
+
+function Shape({ shape, tone, mark, variant }) {
+  const stroke = 'rgba(233,231,223,0.22)'
+  const fill = tone
+  const isWear = ['tee', 'longsleeve', 'hoodie', 'jacket'].includes(shape)
+  const back = variant === 1
+
+  return (
+    <g>
+      {shape === 'stickers' ? (
+        <g stroke={stroke} strokeWidth="2" fill={fill}>
+          <circle cx="140" cy="150" r="62" />
+          <rect x="215" y="100" width="110" height="80" transform="rotate(8 270 140)" />
+          <path d="M90 270 L170 240 L200 320 L120 350 Z" />
+          <circle cx="270" cy="300" r="50" />
+          <rect x="130" y="370" width="150" height="46" transform="rotate(-5 205 393)" />
+          <path d="M295 215 L345 255 L305 300 L265 250 Z" fill="rgb(var(--accent))" stroke="none" />
+        </g>
+      ) : (
+        <path d={SHAPES[shape]} fill={fill} stroke={stroke} strokeWidth="2" strokeLinejoin="round" />
+      )}
+
+      {shape === 'hoodie' && (
+        <g fill="none" stroke={stroke} strokeWidth="2">
+          <path d="M162 64 Q200 14 238 64 Q200 120 162 64 Z" fill={fill} />
+          <path d="M150 360 H250 L262 420 H138 Z" />
+          <path d="M192 92 V140 M208 92 V140" />
+        </g>
+      )}
+      {shape === 'beanie' && <rect x="102" y="318" width="196" height="54" fill={fill} stroke={stroke} strokeWidth="2" />}
+      {shape === 'tote' && (
+        <path d="M148 176 V112 Q200 46 252 112 V176" fill="none" stroke={stroke} strokeWidth="9" />
+      )}
+      {shape === 'jacket' && <path d="M200 80 V444" stroke={stroke} strokeWidth="2" />}
+
+      {mark && (
+        <text
+          x="200"
+          y={isWear ? (back ? 230 : 170) : shape === 'poster' ? 300 : shape === 'beanie' ? 350 : shape === 'tote' ? 330 : 400}
+          textAnchor="middle"
+          fontFamily="'Big Shoulders Display', Impact, sans-serif"
+          fontWeight="900"
+          fontSize={back ? 64 : isWear ? 34 : shape === 'poster' ? 60 : 30}
+          letterSpacing="2"
+          fill="rgb(var(--accent))"
+          opacity={shape === 'stickers' ? 0 : 0.92}
+        >
+          {mark}
+        </text>
+      )}
+      {isWear && back && (
+        <text
+          x="200"
+          y="268"
+          textAnchor="middle"
+          fontFamily="'IBM Plex Mono', monospace"
+          fontSize="11"
+          letterSpacing="5"
+          fill="rgba(233,231,223,0.55)"
+        >
+          2016 / PLACEHOLDER
+        </text>
+      )}
+    </g>
+  )
+}
+
+export default function ProductArt({ product, variant = 0, className = '' }) {
+  const uid = useId().replace(/:/g, '')
+  const { shape, tone, mark } = product.art
+  const views = ['front view', 'back view', 'detail view']
+  const detail = variant === 2
+
+  return (
+    <svg
+      viewBox="0 0 400 500"
+      role="img"
+      aria-label={`${product.name}, ${views[variant] || 'front view'} (placeholder artwork)`}
+      className={className}
+      preserveAspectRatio="xMidYMid slice"
+    >
+      <defs>
+        <radialGradient id={`bg-${uid}`} cx="50%" cy="40%" r="75%">
+          <stop offset="0%" stopColor="#262624" />
+          <stop offset="100%" stopColor="#0d0d0c" />
+        </radialGradient>
+        <filter id={`n-${uid}`} x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="4" result="t" />
+          <feColorMatrix in="t" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0" />
+        </filter>
+      </defs>
+      <rect width="400" height="500" fill={`url(#bg-${uid})`} />
+      <g transform={detail ? 'translate(-200 -150) scale(2)' : undefined}>
+        <Shape shape={shape} tone={tone} mark={mark} variant={variant} />
+      </g>
+      <rect width="400" height="500" filter={`url(#n-${uid})`} opacity="0.12" />
+    </svg>
+  )
+}
+
+/** Abstract placeholder for lookbook tiles. Deterministic from `seed`. */
+export function LookArt({ seed = 1, alt, ratio = 1 }) {
+  const uid = useId().replace(/:/g, '')
+  const r = (n) => {
+    const x = Math.sin(seed * 999 + n * 78.233) * 43758.5453
+    return x - Math.floor(x)
+  }
+  const w = 400
+  const h = Math.round(400 * ratio)
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={alt} className="block h-auto w-full">
+      <defs>
+        <linearGradient id={`g-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={`hsl(${60 + r(1) * 40} 4% ${10 + r(2) * 8}%)`} />
+          <stop offset="100%" stopColor="#0b0b0a" />
+        </linearGradient>
+        <filter id={`b-${uid}`}>
+          <feGaussianBlur stdDeviation="22" />
+        </filter>
+        <filter id={`n-${uid}`} x="0" y="0" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed={seed} />
+          <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0" />
+        </filter>
+      </defs>
+      <rect width={w} height={h} fill={`url(#g-${uid})`} />
+      <g filter={`url(#b-${uid})`}>
+        <ellipse cx={80 + r(3) * 240} cy={h * (0.25 + r(4) * 0.5)} rx={60 + r(5) * 80} ry={50 + r(6) * 70} fill="#8a8a82" opacity="0.28" />
+        <ellipse cx={80 + r(7) * 240} cy={h * (0.3 + r(8) * 0.5)} rx={40 + r(9) * 60} ry={40 + r(10) * 60} fill="rgb(var(--accent))" opacity="0.14" />
+      </g>
+      <rect x={40 + r(11) * 40} y={h * 0.55} width={w - 100 - r(12) * 60} height="2" fill="rgba(233,231,223,0.35)" />
+      <text x="40" y={h - 28} fontFamily="'IBM Plex Mono', monospace" fontSize="11" letterSpacing="4" fill="rgba(233,231,223,0.5)">
+        {`FRAME ${String(seed).padStart(2, '0')} / PLACEHOLDER`}
+      </text>
+      <rect width={w} height={h} filter={`url(#n-${uid})`} opacity="0.13" />
+    </svg>
+  )
+}
+
+{
+  "_readme": "Shared by the website AND the checkout server (api/create-checkout-session.js), so codes and shipping are defined once. Amounts in cents.",
+  "currency": "usd",
+  "discountCodes": {
+    "SMOKE10": { "type": "percent", "value": 10, "label": "10% off" },
+    "FIRSTDROP": { "type": "percent", "value": 15, "label": "15% off" }
+  },
+  "shipping": { "freeOver": 10000, "flat": 800 },
+  "allowedCountries": ["US", "CA", "GB", "IE", "AU", "NZ", "DE", "FR", "NL", "BE", "LU", "ES", "PT", "IT", "AT", "CH", "SE", "NO", "DK", "FI", "PL", "CZ", "SK", "HU", "SI", "HR", "RO", "BG", "GR", "EE", "LV", "LT", "JP", "KR", "SG", "MX", "BR"]
+}
+
+// ============================================================
+//  SITE CONFIG: change brand text, drop date, links and FAQ here.
+//  Anything marked  // PLUG IN  is placeholder content for you to replace.
+// ============================================================
+import commerce from './commerce.json'
+
+export const SITE = {
+  name: 'smokedope2016',
+  storeName: 'smokedope2016 Merch',
+  // PLUG IN: your real domain (also set VITE_SITE_URL in .env)
+  url: (import.meta.env.VITE_SITE_URL || 'https://YOUR-DOMAIN.com').replace(/\/$/, ''),
+  currency: 'USD',
+  locale: 'en-US',
+
+  // Set to false if this is the OFFICIAL store. Removes the footer notice.
+  unofficial: true,
+
+  // PLUG IN: real social profile URLs
+  socials: [
+    { label: 'Instagram', href: 'https://instagram.com/' },
+    { label: 'TikTok', href: 'https://tiktok.com/' },
+    { label: 'YouTube', href: 'https://youtube.com/' },
+    { label: 'Spotify', href: 'https://open.spotify.com/' },
+  ],
+
+  contactEmail: 'support@YOUR-DOMAIN.com', // PLUG IN
+}
+
+// The hero countdown. Change `at` to your real drop time (ISO 8601, include timezone).
+export const NEXT_DROP = {
+  name: 'TOUR CREW JACKET',
+  at: '2026-11-13T17:00:00Z',
+  blurb: 'Numbered edition of 200. When it is gone, it is gone.',
+  productSlug: 'tour-crew-jacket',
+}
+
+export const MARQUEE = ['NEW DROP', 'LIMITED', 'SHIPS WORLDWIDE', 'NO RESTOCKS', 'SMOKE ON']
+
+// Discount codes and shipping rates live in commerce.json so the website and the
+// checkout server read the exact same values. Edit them there.
+export const DISCOUNT_CODES = commerce.discountCodes
+export const SHIPPING = commerce.shipping
+
+export const SIZE_GUIDE = {
+  unit: 'cm',
+  head: ['Size', 'Chest', 'Length', 'Sleeve'],
+  rows: [
+    ['S', '112', '68', '62'],
+    ['M', '118', '70', '63'],
+    ['L', '124', '72', '64'],
+    ['XL', '130', '74', '65'],
+    ['XXL', '136', '76', '66'],
+  ],
+  note: 'Measurements are flat chest width x 2. Pieces are cut boxy: if you want a normal fit, size down one.',
+}
+
+export const ABOUT = {
+  // PLUG IN: replace with the real bio
+  headline: 'Made for the late nights.',
+  paragraphs: [
+    'This is placeholder copy. Replace it with the real story: where the music comes from, why the merch exists, who makes it.',
+    'Every drop is small on purpose. Heavy fabric, rough prints, no restocks. If you missed one, you missed it.',
+  ],
+}
+
+export const FAQ = [
+  {
+    q: 'How long does shipping take?',
+    a: 'Orders ship within 3 to 5 business days. US delivery usually takes 3 to 7 days after dispatch, international 7 to 14 days. You get a tracking link by email.',
+  },
+  {
+    q: 'Do you ship worldwide?',
+    a: 'Yes. Duties and import taxes are set by your country and are not included in the price.',
+  },
+  {
+    q: 'What is your return policy?',
+    a: 'Unworn items in original condition can be returned within 30 days. Limited drop items are final sale unless they arrive damaged or wrong.',
+  },
+  {
+    q: 'How do the sizes fit?',
+    a: 'Hoodies and tees are cut boxy and oversized. Size down one for a regular fit. The size guide is on every product page.',
+  },
+  {
+    q: 'Will sold out items come back?',
+    a: 'Usually not. Drops are limited. Join the drop alerts list to hear about new releases first.',
+  },
+  {
+    q: 'My order arrived wrong or damaged.',
+    a: 'Email us with your order number and a photo within 14 days and we will make it right.',
+  },
+]
+
+// Lookbook tiles. If `src` is empty a generated placeholder is drawn.
+// PLUG IN: add real photos to /public/img/lookbook and list them: { src: '/img/lookbook/01.webp', alt: '...', ratio: 1.25 }
+export const LOOKBOOK = [
+  { src: '', alt: 'Placeholder lookbook shot 1: hoodie in low light', ratio: 1.25, seed: 1 },
+  { src: '', alt: 'Placeholder lookbook shot 2: close up of tee print', ratio: 0.8, seed: 2 },
+  { src: '', alt: 'Placeholder lookbook shot 3: beanie portrait', ratio: 1, seed: 3 },
+  { src: '', alt: 'Placeholder lookbook shot 4: jacket back panel', ratio: 1.4, seed: 4 },
+  { src: '', alt: 'Placeholder lookbook shot 5: tote bag on a stairwell', ratio: 0.9, seed: 5 },
+  { src: '', alt: 'Placeholder lookbook shot 6: long sleeve, street at night', ratio: 1.3, seed: 6 },
+  { src: '', alt: 'Placeholder lookbook shot 7: sticker wall', ratio: 1, seed: 7 },
+  { src: '', alt: 'Placeholder lookbook shot 8: poster detail', ratio: 1.15, seed: 8 },
+]
+
+export const POLICIES = {
+  shipping: {
+    title: 'Shipping Policy',
+    body: [
+      'TEMPLATE TEXT: have this reviewed for your business before launch.',
+      'Orders are processed within 3 to 5 business days. Shipping costs are calculated at checkout. Orders over $100 ship free.',
+      'We ship worldwide. Customers are responsible for any customs duties, import taxes and fees charged by their country.',
+      'Once your order ships you will receive an email with tracking information. We are not responsible for delays caused by carriers or customs.',
+    ],
+  },
+  refunds: {
+    title: 'Refund Policy',
+    body: [
+      'TEMPLATE TEXT: have this reviewed for your business before launch.',
+      'You can return unworn, unwashed items in original condition within 30 days of delivery for a refund to your original payment method. Return shipping is paid by the customer.',
+      'Limited drop items are final sale unless they arrive damaged or incorrect. Contact us within 14 days of delivery with your order number and a photo.',
+      'Refunds are issued within 7 business days of us receiving the return.',
+    ],
+  },
+  privacy: {
+    title: 'Privacy Policy',
+    body: [
+      'TEMPLATE TEXT: have this reviewed for your business and your local law (GDPR, CCPA) before launch.',
+      'We collect the information you give us at checkout (name, address, email) and when you join the drop list (email or phone). Payments are handled by Stripe: we never see or store your card number.',
+      'We use your information to fulfil orders, send order updates and, if you opted in, announce new drops. You can unsubscribe at any time.',
+      'This site stores your cart in your browser (localStorage). No tracking cookies are set by this template.',
+    ],
+  },
+  terms: {
+    title: 'Terms of Service',
+    body: [
+      'TEMPLATE TEXT: have this reviewed for your business before launch.',
+      'By placing an order you agree to these terms. Prices are shown in USD and may change without notice. We may cancel orders that appear fraudulent or that were placed at an incorrect price.',
+      'Limited quantities are available on a first come, first served basis. Placing an item in your cart does not reserve it.',
+      'All artwork and designs on this site are the property of their respective owners.',
+    ],
+  },
+}
+
+{
+  "_readme": "EDIT THIS FILE to manage your store. price is in CENTS. stock: 0 = sold out, 1-5 = 'low stock' badge. dropAt (ISO date) locks the product until that moment. images: put real WebP files in /public/img and list them as ['/img/hoodie-1.webp', ...]. If images is empty, a generated placeholder is drawn. The checkout server (api/create-checkout-session.js) reads this SAME file to validate prices, so you only edit prices here.",
+  "products": [
+    {
+      "id": "sd-hoodie-01",
+      "slug": "static-heavyweight-hoodie",
+      "name": "Static Heavyweight Hoodie",
+      "category": "hoodies",
+      "price": 8500,
+      "description": "450gsm fleece, boxy fit, dropped shoulders. Washed black with a cracked puff print across the chest. Pre-shrunk and built to be worn to death.",
+      "details": ["450gsm brushed fleece", "Boxy oversized fit", "Cracked puff print, front and back", "Unisex, runs large: size down for a normal fit"],
+      "sizes": ["S", "M", "L", "XL", "XXL"],
+      "stock": 24,
+      "featured": true,
+      "art": { "shape": "hoodie", "tone": "#1a1a18", "mark": "STATIC" },
+      "images": []
+    },
+    {
+      "id": "sd-tee-01",
+      "slug": "ash-boxy-tee",
+      "name": "Ash Boxy Tee",
+      "category": "tees",
+      "price": 3800,
+      "description": "Heavy 240gsm cotton in faded ash grey. Oversized boxy cut with a raw hem and a distressed graphic on the back.",
+      "details": ["240gsm combed cotton", "Boxy cut, raw hem", "Distressed screen print", "Garment dyed: each piece fades differently"],
+      "sizes": ["S", "M", "L", "XL", "XXL"],
+      "stock": 60,
+      "featured": true,
+      "art": { "shape": "tee", "tone": "#3a3a36", "mark": "ASH" },
+      "images": []
+    },
+    {
+      "id": "sd-ls-01",
+      "slug": "night-shift-long-sleeve",
+      "name": "Night Shift Long Sleeve",
+      "category": "longsleeves",
+      "price": 4800,
+      "description": "Long sleeve with sleeve prints and a small chest hit. Made for 3am studio sessions and cold bus stops.",
+      "details": ["220gsm cotton jersey", "Relaxed fit", "Sleeve print on both arms", "Ribbed cuffs"],
+      "sizes": ["S", "M", "L", "XL"],
+      "stock": 4,
+      "featured": true,
+      "art": { "shape": "longsleeve", "tone": "#10100f", "mark": "NIGHT" },
+      "images": []
+    },
+    {
+      "id": "sd-beanie-01",
+      "slug": "soot-beanie",
+      "name": "Soot Beanie",
+      "category": "accessories",
+      "price": 2800,
+      "description": "Tight-knit fisherman beanie with a woven patch. One size, pulls down low.",
+      "details": ["100% acrylic knit", "Woven patch", "One size fits most"],
+      "sizes": ["OS"],
+      "stock": 35,
+      "featured": true,
+      "art": { "shape": "beanie", "tone": "#232321", "mark": "SOOT" },
+      "images": []
+    },
+    {
+      "id": "sd-tote-01",
+      "slug": "carbon-tote",
+      "name": "Carbon Tote",
+      "category": "accessories",
+      "price": 2400,
+      "description": "Heavy canvas tote with reinforced handles and an inside pocket. Fits records, a laptop, or a whole bad decision.",
+      "details": ["12oz canvas", "Inside zip pocket", "Reinforced stitching", "38 x 42 cm"],
+      "sizes": ["OS"],
+      "stock": 18,
+      "featured": false,
+      "art": { "shape": "tote", "tone": "#2b2b28", "mark": "CARBON" },
+      "images": []
+    },
+    {
+      "id": "sd-stickers-01",
+      "slug": "residue-sticker-pack",
+      "name": "Residue Sticker Pack",
+      "category": "accessories",
+      "price": 900,
+      "description": "Six die-cut vinyl stickers. Waterproof, scratch-proof, and impossible to peel off cleanly.",
+      "details": ["6 die-cut vinyl stickers", "Waterproof matte finish", "Sizes 5 to 9 cm"],
+      "sizes": ["OS"],
+      "stock": 0,
+      "featured": false,
+      "art": { "shape": "stickers", "tone": "#1b1b19", "mark": "RESIDUE" },
+      "images": []
+    },
+    {
+      "id": "sd-poster-01",
+      "slug": "fog-poster",
+      "name": "Fog Poster",
+      "category": "accessories",
+      "price": 2200,
+      "description": "18 x 24 in poster on heavy matte stock. Black ink on smoke grey, shipped flat in a tube.",
+      "details": ["18 x 24 in (46 x 61 cm)", "200gsm matte stock", "Ships in a protective tube"],
+      "sizes": ["18x24"],
+      "stock": 40,
+      "featured": false,
+      "art": { "shape": "poster", "tone": "#2a2a27", "mark": "FOG" },
+      "images": []
+    },
+    {
+      "id": "sd-tour-01",
+      "slug": "tour-crew-jacket",
+      "name": "Tour Crew Jacket",
+      "category": "limited",
+      "price": 12000,
+      "description": "Limited run coach jacket with an embroidered back piece and numbered inside tag. Once this batch is gone, it is gone.",
+      "details": ["Numbered edition of 200", "Embroidered back panel", "Water-resistant nylon shell", "Snap front, two pockets"],
+      "sizes": ["S", "M", "L", "XL"],
+      "stock": 200,
+      "featured": true,
+      "dropAt": "2026-11-13T17:00:00Z",
+      "art": { "shape": "jacket", "tone": "#0e0e0d", "mark": "TOUR" },
+      "images": []
+    }
+  ]
+}
+
+import { useEffect } from 'react'
+import { SITE } from '../data/site.config.js'
+
+function setMeta(attr, key, value) {
+  let el = document.head.querySelector(`meta[${attr}="${key}"]`)
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute(attr, key)
+    document.head.appendChild(el)
+  }
+  el.setAttribute('content', value)
+}
+
+/**
+ * Per-page SEO. Call once at the top of every page component.
+ * Note: this runs in the browser. Google renders JS, but social crawlers (Instagram/TikTok/iMessage
+ * link previews) often do NOT. For perfect link previews either prerender the pages or use Next.js.
+ * See README > "SEO and link previews".
+ */
+export function useSEO({ title, description, path = '/', image }) {
+  useEffect(() => {
+    const fullTitle = title ? `${title} | ${SITE.storeName}` : `${SITE.storeName} | Limited drops`
+    const url = SITE.url + path
+    const img = image || `${SITE.url}/og.png`
+    document.title = fullTitle
+    setMeta('name', 'description', description)
+    setMeta('property', 'og:title', fullTitle)
+    setMeta('property', 'og:description', description)
+    setMeta('property', 'og:url', url)
+    setMeta('property', 'og:image', img)
+    setMeta('name', 'twitter:card', 'summary_large_image')
+    setMeta('name', 'twitter:title', fullTitle)
+    setMeta('name', 'twitter:description', description)
+    setMeta('name', 'twitter:image', img)
+    let link = document.head.querySelector('link[rel="canonical"]')
+    if (!link) {
+      link = document.createElement('link')
+      link.setAttribute('rel', 'canonical')
+      document.head.appendChild(link)
+    }
+    link.setAttribute('href', url)
+  }, [title, description, path, image])
+}
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useState } from 'react'
+import { DISCOUNT_CODES, SHIPPING } from '../data/site.config.js'
+import { PRODUCTS, shippingFor } from './format.js'
+
+const STORAGE_KEY = 'sd2016_cart_v1'
+const CartCtx = createContext(null)
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return { items: [], code: '' }
+    const parsed = JSON.parse(raw)
+    // Drop anything that no longer exists in products.json.
+    const items = (parsed.items || []).filter((i) => PRODUCTS.some((p) => p.id === i.id))
+    return { items, code: parsed.code || '' }
+  } catch {
+    return { items: [], code: '' }
+  }
+}
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'add': {
+      const { id, size, qty } = action
+      const product = PRODUCTS.find((p) => p.id === id)
+      const max = product ? Math.min(product.stock, 10) : 1
+      const i = state.items.findIndex((x) => x.id === id && x.size === size)
+      const items = [...state.items]
+      if (i >= 0) items[i] = { ...items[i], qty: Math.min(max, items[i].qty + qty) }
+      else items.push({ id, size, qty: Math.min(max, qty) })
+      return { ...state, items }
+    }
+    case 'setQty': {
+      const product = PRODUCTS.find((p) => p.id === action.id)
+      const max = product ? Math.min(product.stock, 10) : 1
+      const items = state.items
+        .map((x) => (x.id === action.id && x.size === action.size ? { ...x, qty: Math.min(max, action.qty) } : x))
+        .filter((x) => x.qty > 0)
+      return { ...state, items }
+    }
+    case 'remove':
+      return { ...state, items: state.items.filter((x) => !(x.id === action.id && x.size === action.size)) }
+    case 'code':
+      return { ...state, code: action.code }
+    case 'clear':
+      return { items: [], code: '' }
+    default:
+      return state
+  }
+}
+
+export function CartProvider({ children }) {
+  const [state, dispatch] = useReducer(reducer, undefined, load)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    } catch {
+      /* private mode or storage full: cart just won't persist */
+    }
+  }, [state])
+
+  const add = useCallback((id, size, qty = 1) => {
+    dispatch({ type: 'add', id, size, qty })
+    setOpen(true)
+  }, [])
+
+  const value = useMemo(() => {
+    const lines = state.items
+      .map((i) => ({ ...i, product: PRODUCTS.find((p) => p.id === i.id) }))
+      .filter((l) => l.product)
+    const subtotal = lines.reduce((sum, l) => sum + l.product.price * l.qty, 0)
+    const count = lines.reduce((n, l) => n + l.qty, 0)
+    const discount = DISCOUNT_CODES[state.code.toUpperCase()]
+    const discountAmount = discount ? Math.round((subtotal * discount.value) / 100) : 0
+    const shipping = shippingFor(subtotal - discountAmount, SHIPPING)
+    return {
+      lines,
+      count,
+      subtotal,
+      code: state.code,
+      discount,
+      discountAmount,
+      shipping,
+      total: subtotal - discountAmount + shipping,
+      open,
+      setOpen,
+      add,
+      setQty: (id, size, qty) => dispatch({ type: 'setQty', id, size, qty }),
+      remove: (id, size) => dispatch({ type: 'remove', id, size }),
+      applyCode: (code) => {
+        const clean = code.trim().toUpperCase()
+        if (!clean) return { ok: false, message: 'Enter a code.' }
+        if (!DISCOUNT_CODES[clean]) return { ok: false, message: 'That code is not valid.' }
+        dispatch({ type: 'code', code: clean })
+        return { ok: true, message: `${DISCOUNT_CODES[clean].label} applied.` }
+      },
+      clearCode: () => dispatch({ type: 'code', code: '' }),
+      clear: () => dispatch({ type: 'clear' }),
+    }
+  }, [state, open, add])
+
+  return <CartCtx.Provider value={value}>{children}</CartCtx.Provider>
+}
+
+export function useCart() {
+  const ctx = useContext(CartCtx)
+  if (!ctx) throw new Error('useCart must be used inside <CartProvider>')
+  return ctx
+}
+
+const ENDPOINT = import.meta.env.VITE_CHECKOUT_ENDPOINT || '/api/create-checkout-session'
+
+/**
+ * Sends ONLY ids, sizes and quantities to the server. The server looks up prices itself
+ * (see api/create-checkout-session.js) so nobody can edit a price in the browser.
+ * Returns { url } on success or throws an Error with a readable message.
+ */
+export async function startCheckout(lines, code) {
+  let res
+  try {
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: lines.map((l) => ({ id: l.id, size: l.size, qty: l.qty })),
+        code: code || undefined,
+      }),
+    })
+  } catch {
+    throw new Error('Could not reach the checkout server. Check your connection and try again.')
+  }
+
+  let data = null
+  try {
+    data = await res.json()
+  } catch {
+    /* non-JSON response */
+  }
+
+  if (!res.ok || !data?.url) {
+    if (res.status === 404) {
+      throw new Error('Checkout is not set up yet. Deploy the /api function and add your Stripe key (see README).')
+    }
+    throw new Error(data?.error || 'Checkout failed. Please try again.')
+  }
+  return data
+}
+
+import { SITE } from '../data/site.config.js'
+import data from '../data/products.json'
+
+export const PRODUCTS = data.products
+
+export function money(cents) {
+  return new Intl.NumberFormat(SITE.locale, {
+    style: 'currency',
+    currency: SITE.currency,
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+  }).format(cents / 100)
+}
+
+export function getProduct(slug) {
+  return PRODUCTS.find((p) => p.slug === slug)
+}
+
+/** A product is locked while its dropAt time is in the future. */
+export function isLocked(product, now = Date.now()) {
+  return !!product.dropAt && new Date(product.dropAt).getTime() > now
+}
+
+export function stockState(product) {
+  if (product.stock <= 0) return 'sold-out'
+  if (product.stock <= 5) return 'low'
+  return 'in'
+}
+
+export function shippingFor(subtotalCents, shipping) {
+  if (subtotalCents <= 0) return 0
+  return subtotalCents >= shipping.freeOver ? 0 : shipping.flat
+}
+
+export const CATEGORY_LABELS = {
+  hoodies: 'Hoodies',
+  tees: 'Tees',
+  longsleeves: 'Long sleeves',
+  accessories: 'Accessories',
+  limited: 'Limited',
+}
+
+import { useEffect, useState } from 'react'
+
+/** Ticks once per second. Returns remaining parts and a `done` flag. */
+export function useCountdown(targetIso) {
+  const target = new Date(targetIso).getTime()
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (Number.isNaN(target) || Date.now() >= target) return undefined
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [target])
+
+  const diff = Math.max(0, target - now)
+  const s = Math.floor(diff / 1000)
+  return {
+    done: diff === 0,
+    days: Math.floor(s / 86400),
+    hours: Math.floor((s % 86400) / 3600),
+    minutes: Math.floor((s % 3600) / 60),
+    seconds: s % 60,
+    now,
+  }
+}
+
+/** Re-renders at the moment a locked product unlocks, so Shop/Product update without a refresh. */
+export function useNow(intervalMs = 1000) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+  return now
+}
+
+import { useEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import Countdown from '../components/Countdown.jsx'
+import ProductCard from '../components/ProductCard.jsx'
+import ProductImage from '../components/ProductImage.jsx'
+import SignupForm from '../components/SignupForm.jsx'
+import { SHIPPING, SIZE_GUIDE, SITE } from '../data/site.config.js'
+import { useCart } from '../lib/cart.jsx'
+import { CATEGORY_LABELS, PRODUCTS, getProduct, isLocked, money, stockState } from '../lib/format.js'
+import { useSEO } from '../lib/seo.js'
+import { useNow } from '../lib/useCountdown.js'
+import NotFound from './NotFound.jsx'
+
+const VIEWS = 3 // front, back, detail. PLUG IN: match the number of photos you list in products.json
+
+/** Hover (desktop) or tap (touch) to zoom. Zoom is also a real button for keyboard users. */
+function Zoomable({ product, index }) {
+  const [zoom, setZoom] = useState(false)
+  const [origin, setOrigin] = useState('50% 50%')
+  const ref = useRef(null)
+
+  function track(e) {
+    const r = ref.current.getBoundingClientRect()
+    setOrigin(`${((e.clientX - r.left) / r.width) * 100}% ${((e.clientY - r.top) / r.height) * 100}%`)
+  }
+
+  return (
+    <div className="relative">
+      <div
+        ref={ref}
+        className="aspect-[4/5] overflow-hidden border border-smoke/30 bg-coal"
+        style={{ cursor: zoom ? 'zoom-out' : 'zoom-in', touchAction: zoom ? 'none' : 'auto' }}
+        onPointerMove={zoom ? track : undefined}
+        onPointerEnter={(e) => {
+          if (e.pointerType === 'mouse') {
+            setZoom(true)
+            track(e)
+          }
+        }}
+        onPointerLeave={(e) => e.pointerType === 'mouse' && setZoom(false)}
+        onClick={(e) => {
+          if (e.pointerType !== 'mouse' && e.nativeEvent.pointerType !== 'mouse') {
+            track(e)
+            setZoom((z) => !z)
+          }
+        }}
+      >
+        <div className="h-full w-full transition-transform duration-200 ease-out" style={{ transform: zoom ? 'scale(2.2)' : 'scale(1)', transformOrigin: origin }}>
+          <ProductImage product={product} index={index} eager />
+        </div>
+      </div>
+      <button
+        className="chip absolute bottom-3 right-3 bg-ink/90"
+        aria-pressed={zoom}
+        onClick={() => {
+          setOrigin('50% 50%')
+          setZoom((z) => !z)
+        }}
+      >
+        {zoom ? 'Zoom out' : 'Zoom in'}
+      </button>
+    </div>
+  )
+}
+
+function Accordion({ title, children, defaultOpen = false }) {
+  return (
+    <details open={defaultOpen} className="border-b border-smoke/30">
+      <summary className="flex min-h-[52px] items-center justify-between py-3">
+        <span className="label !text-bone">{title}</span>
+        <span className="plus text-xl text-acid" aria-hidden="true">+</span>
+      </summary>
+      <div className="pb-5 text-[14px] text-smoke">{children}</div>
+    </details>
+  )
+}
+
+export default function Product() {
+  const { slug } = useParams()
+  const product = getProduct(slug)
+  const now = useNow(1000)
+  const cart = useCart()
+  const [view, setView] = useState(0)
+  const [size, setSize] = useState('')
+  const [qty, setQty] = useState(1)
+  const [showGuide, setShowGuide] = useState(false)
+  const [sizeError, setSizeError] = useState(false)
+
+  useEffect(() => {
+    setView(0)
+    setSize(product && product.sizes.length === 1 ? product.sizes[0] : '')
+    setQty(1)
+    setSizeError(false)
+    setShowGuide(false)
+  }, [slug]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useSEO({
+    title: product?.name || 'Not found',
+    description: product ? `${product.description.slice(0, 150).trim()}${product.description.length > 150 ? '…' : ''}` : 'Product not found.',
+    path: `/product/${slug}`,
+  })
+
+  // Structured data so Google can show price + availability
+  useEffect(() => {
+    if (!product) return undefined
+    const ld = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      description: product.description,
+      brand: { '@type': 'Brand', name: SITE.name },
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: SITE.currency,
+        price: (product.price / 100).toFixed(2),
+        availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url: `${SITE.url}/product/${product.slug}`,
+      },
+    }
+    const el = document.createElement('script')
+    el.type = 'application/ld+json'
+    el.textContent = JSON.stringify(ld)
+    document.head.appendChild(el)
+    return () => el.remove()
+  }, [product])
+
+  if (!product) return <NotFound />
+
+  const locked = isLocked(product, now)
+  const state = stockState(product)
+  const maxQty = Math.min(product.stock, 10)
+  const isApparel = ['hoodies', 'tees', 'longsleeves', 'limited'].includes(product.category) && product.sizes[0] !== 'OS'
+  const canBuy = !locked && state !== 'sold-out'
+
+  const related = [
+    ...PRODUCTS.filter((p) => p.id !== product.id && p.category === product.category),
+    ...PRODUCTS.filter((p) => p.id !== product.id && p.category !== product.category),
+  ].slice(0, 4)
+
+  function add() {
+    if (!size) {
+      setSizeError(true)
+      document.getElementById('size-group')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
+    cart.add(product.id, size, qty)
+  }
+
+  return (
+    <div className="wrap pt-6 sm:pt-10">
+      <nav aria-label="Breadcrumb" className="mb-6 text-[12px] text-smoke">
+        <Link className="hover:text-acid" to="/shop">Shop</Link>
+        <span aria-hidden="true"> / </span>
+        <Link className="hover:text-acid" to={`/shop?c=${product.category}`}>{CATEGORY_LABELS[product.category]}</Link>
+        <span aria-hidden="true"> / </span>
+        <span className="text-bone">{product.name}</span>
+      </nav>
+
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_1fr] lg:gap-14">
+        {/* Gallery */}
+        <div className="min-w-0">
+          <Zoomable key={`${slug}-${view}`} product={product} index={view} />
+          <div className="mt-3 grid grid-cols-3 gap-3" role="group" aria-label="Product views">
+            {Array.from({ length: VIEWS }).map((_, i) => (
+              <button
+                key={i}
+                aria-label={`Show view ${i + 1} of ${VIEWS}`}
+                aria-pressed={view === i}
+                onClick={() => setView(i)}
+                className={`aspect-[4/5] overflow-hidden border ${view === i ? 'border-acid' : 'border-smoke/30 hover:border-bone'}`}
+              >
+                <ProductImage product={product} index={i} />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="min-w-0">
+          <p className="label">{CATEGORY_LABELS[product.category]}</p>
+          <h1 className="h-display mt-2 text-5xl sm:text-7xl">{product.name}</h1>
+          <p className="mt-4 text-2xl tabular-nums">{money(product.price)}</p>
+
+          <div className="mt-3 min-h-[1.5rem]" role="status" aria-live="polite">
+            {!locked && state === 'low' && <p className="text-[13px] text-acid">Only {product.stock} left</p>}
+            {!locked && state === 'sold-out' && <p className="text-[13px] text-[#ff6b6b]">Sold out</p>}
+          </div>
+
+          <p className="mt-4 max-w-prose text-smoke">{product.description}</p>
+
+          {locked ? (
+            <div className="mt-8 border border-acid/60 bg-coal p-5">
+              <p className="label !text-acid">Locked. Drops soon</p>
+              <p className="mb-4 mt-1 text-[13px] text-smoke">
+                {new Date(product.dropAt).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}
+              </p>
+              <Countdown target={product.dropAt} size="sm" />
+              <p className="label mb-3 mt-6">Get a reminder</p>
+              <SignupForm source={`product-${product.slug}`} compact />
+            </div>
+          ) : (
+            <>
+              {product.sizes[0] !== 'OS' && product.sizes.length > 1 && (
+                <fieldset id="size-group" className="mt-8">
+                  <div className="mb-3 flex items-center justify-between">
+                    <legend className="label !text-bone">Size</legend>
+                    {isApparel && (
+                      <button className="label underline underline-offset-4 hover:text-acid" aria-expanded={showGuide} onClick={() => setShowGuide((s) => !s)}>
+                        Size guide
+                      </button>
+                    )}
+                  </div>
+                  <div role="radiogroup" aria-label="Choose a size" className="flex flex-wrap gap-2">
+                    {product.sizes.map((s) => (
+                      <button
+                        key={s}
+                        role="radio"
+                        aria-checked={size === s}
+                        disabled={!canBuy}
+                        className="chip min-w-[56px]"
+                        onClick={() => {
+                          setSize(s)
+                          setSizeError(false)
+                        }}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  {sizeError && <p role="alert" className="mt-2 text-[13px] text-[#ff6b6b]">Pick a size first.</p>}
+
+                  {showGuide && (
+                    <div className="mt-4 overflow-x-auto border border-smoke/30 bg-coal p-4">
+                      <table className="w-full min-w-[320px] text-left text-[13px]">
+                        <caption className="label mb-2 text-left">Measurements in {SIZE_GUIDE.unit}</caption>
+                        <thead>
+                          <tr>{SIZE_GUIDE.head.map((h) => <th key={h} scope="col" className="pb-2 pr-4 font-semibold text-acid">{h}</th>)}</tr>
+                        </thead>
+                        <tbody>
+                          {SIZE_GUIDE.rows.map((r) => (
+                            <tr key={r[0]} className="border-t border-smoke/20">
+                              {r.map((c, i) => <td key={i} className="py-2 pr-4 tabular-nums">{c}</td>)}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className="mt-3 text-[12px] text-smoke">{SIZE_GUIDE.note}</p>
+                    </div>
+                  )}
+                </fieldset>
+              )}
+
+              <div className="mt-6 flex flex-wrap items-stretch gap-3">
+                <div className="flex items-center border border-smoke/40" role="group" aria-label="Quantity">
+                  <button className="h-12 w-12 hover:bg-acid hover:text-ink disabled:opacity-40" disabled={!canBuy || qty <= 1} aria-label="Decrease quantity" onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
+                  <span className="w-10 text-center tabular-nums" aria-live="polite">{qty}</span>
+                  <button className="h-12 w-12 hover:bg-acid hover:text-ink disabled:opacity-40" disabled={!canBuy || qty >= maxQty} aria-label="Increase quantity" onClick={() => setQty((q) => Math.min(maxQty, q + 1))}>+</button>
+                </div>
+                <button className="btn btn-solid min-w-[200px] flex-1" disabled={!canBuy} onClick={add}>
+                  {state === 'sold-out' ? 'Sold out' : 'Add to cart'}
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="mt-10 border-t border-smoke/30">
+            <Accordion title="Details" defaultOpen>
+              <ul className="list-inside list-disc space-y-1">
+                {product.details.map((d) => <li key={d}>{d}</li>)}
+              </ul>
+            </Accordion>
+            <Accordion title="Shipping">
+              <p>Ships in 3 to 5 business days. {money(SHIPPING.flat)} flat rate, free over {money(SHIPPING.freeOver)}. We ship worldwide: duties and import taxes are set by your country.</p>
+              <p className="mt-2"><Link className="underline underline-offset-4 hover:text-acid" to="/policy/shipping">Full shipping policy</Link></p>
+            </Accordion>
+            <Accordion title="Returns">
+              <p>30 days for unworn items in original condition. Limited drop items are final sale unless damaged or wrong.</p>
+              <p className="mt-2"><Link className="underline underline-offset-4 hover:text-acid" to="/policy/refunds">Full refund policy</Link></p>
+            </Accordion>
+          </div>
+        </div>
+      </div>
+
+      <section className="pt-20 sm:pt-28" aria-labelledby="related-title">
+        <h2 id="related-title" className="h-display mb-8 text-4xl sm:text-6xl">You may also like</h2>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-8 lg:grid-cols-4 lg:gap-x-5">
+          {related.map((p) => <ProductCard key={p.id} product={p} now={now} />)}
+        </div>
+      </section>
+    </div>
+  )
+}
+
+import { useParams } from 'react-router-dom'
+import { POLICIES } from '../data/site.config.js'
+import { useSEO } from '../lib/seo.js'
+import NotFound from './NotFound.jsx'
+
+export default function Policy() {
+  const { key } = useParams()
+  const policy = POLICIES[key]
+  useSEO({
+    title: policy?.title || 'Not found',
+    description: policy ? `${policy.title} for the smokedope2016 merch store.` : 'Page not found.',
+    path: `/policy/${key}`,
+  })
+  if (!policy) return <NotFound />
+
+  return (
+    <article className="wrap max-w-3xl pt-10 sm:pt-16">
+      <h1 className="h-display text-5xl sm:text-7xl">{policy.title}</h1>
+      <div className="mt-8 space-y-4 text-bone/90">
+        {policy.body.map((p, i) => (
+          <p key={i} className={i === 0 ? 'border border-acid/50 p-3 text-[13px] text-acid' : ''}>{p}</p>
+        ))}
+      </div>
+    </article>
+  )
+}
+
+import { LookArt } from '../components/ProductArt.jsx'
+import { LOOKBOOK } from '../data/site.config.js'
+import { useSEO } from '../lib/seo.js'
+
+export default function Lookbook() {
+  useSEO({
+    title: 'Lookbook',
+    description: 'The latest drop in the wild. Photos, close-ups and behind the scenes from the smokedope2016 merch lookbook.',
+    path: '/lookbook',
+  })
+
+  return (
+    <div className="wrap pt-10 sm:pt-16">
+      <h1 className="h-display text-6xl sm:text-8xl">Lookbook</h1>
+      <p className="mt-3 max-w-md text-smoke">Worn hard, photographed late.</p>
+
+      {/* CSS columns = masonry without JavaScript. */}
+      <ul className="mt-10 columns-2 gap-3 md:columns-3 lg:gap-4">
+        {LOOKBOOK.map((item, i) => (
+          <li key={i} className="mb-3 break-inside-avoid overflow-hidden border border-smoke/25 lg:mb-4">
+            {item.src ? (
+              <img
+                src={item.src}
+                alt={item.alt}
+                loading={i < 2 ? 'eager' : 'lazy'}
+                decoding="async"
+                width="800"
+                height={Math.round(800 * item.ratio)}
+                className="block h-auto w-full"
+              />
+            ) : (
+              <LookArt seed={item.seed} alt={item.alt} ratio={item.ratio} />
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+import { useState } from 'react'
+import { ABOUT, FAQ, SITE } from '../data/site.config.js'
+import { useSEO } from '../lib/seo.js'
+
+const ENDPOINT = import.meta.env.VITE_CONTACT_ENDPOINT
+
+function ContactForm() {
+  const [f, setF] = useState({ name: '', email: '', message: '', trap: '' })
+  const [state, setState] = useState({ status: 'idle', message: '' })
+  const upd = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
+
+  async function submit(e) {
+    e.preventDefault()
+    if (f.trap) return
+    if (!f.name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim()) || f.message.trim().length < 5) {
+      setState({ status: 'error', message: 'Fill in your name, a valid email and a message.' })
+      return
+    }
+    setState({ status: 'loading', message: '' })
+    try {
+      if (ENDPOINT) {
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: f.name, email: f.email, message: f.message }),
+        })
+        if (!res.ok) throw new Error('bad status')
+      } else {
+        await new Promise((r) => setTimeout(r, 400)) // demo mode
+      }
+      setState({ status: 'ok', message: 'Message sent. We reply within 2 business days.' })
+      setF({ name: '', email: '', message: '', trap: '' })
+    } catch {
+      setState({ status: 'error', message: `Could not send. Email us at ${SITE.contactEmail}.` })
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="space-y-4">
+      <div>
+        <label htmlFor="c-name" className="label mb-2 block">Name</label>
+        <input id="c-name" className="field" autoComplete="name" value={f.name} onChange={upd('name')} />
+      </div>
+      <div>
+        <label htmlFor="c-email" className="label mb-2 block">Email</label>
+        <input id="c-email" type="email" className="field" autoComplete="email" value={f.email} onChange={upd('email')} />
+      </div>
+      <div>
+        <label htmlFor="c-msg" className="label mb-2 block">Message</label>
+        <textarea id="c-msg" rows="5" className="field" value={f.message} onChange={upd('message')} />
+      </div>
+      <input tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 opacity-0" name="website" value={f.trap} onChange={upd('trap')} />
+      <button className="btn btn-solid" disabled={state.status === 'loading'}>
+        {state.status === 'loading' ? 'Sending…' : 'Send message'}
+      </button>
+      <p role="status" aria-live="polite" className={`min-h-[1.25rem] text-[13px] ${state.status === 'error' ? 'text-[#ff6b6b]' : 'text-acid'}`}>{state.message}</p>
+    </form>
+  )
+}
+
+export default function About() {
+  useSEO({
+    title: 'About and contact',
+    description: 'About the smokedope2016 merch store, shipping and returns FAQ, size help and how to contact support.',
+    path: '/about',
+  })
+
+  return (
+    <div className="wrap pt-10 sm:pt-16">
+      <h1 className="h-display text-6xl sm:text-8xl">{ABOUT.headline}</h1>
+      <div className="mt-8 grid gap-10 md:grid-cols-[1.4fr_1fr]">
+        <div className="max-w-prose space-y-4 text-[16px] text-bone/90">
+          {ABOUT.paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+        </div>
+        <div>
+          <p className="label mb-3">Follow</p>
+          <ul className="space-y-2">
+            {SITE.socials.map((s) => (
+              <li key={s.label}><a className="hover:text-acid" href={s.href} target="_blank" rel="noopener noreferrer">{s.label} ↗</a></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <section id="faq" className="scroll-mt-24 pt-20" aria-labelledby="faq-title">
+        <h2 id="faq-title" className="h-display text-5xl sm:text-6xl">FAQ</h2>
+        <div className="mt-6 max-w-3xl border-t border-smoke/30">
+          {FAQ.map((item) => (
+            <details key={item.q} className="border-b border-smoke/30">
+              <summary className="flex min-h-[56px] items-center justify-between gap-4 py-3">
+                <span className="font-display text-xl font-black uppercase sm:text-2xl">{item.q}</span>
+                <span className="plus text-2xl text-acid" aria-hidden="true">+</span>
+              </summary>
+              <p className="max-w-prose pb-5 text-smoke">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <section id="contact" className="scroll-mt-24 pt-20" aria-labelledby="contact-title">
+        <h2 id="contact-title" className="h-display text-5xl sm:text-6xl">Contact</h2>
+        <div className="mt-6 grid gap-10 md:grid-cols-2">
+          <ContactForm />
+          <div className="text-smoke">
+            <p>Order problem? Include your order number.</p>
+            <p className="mt-2">Email: <span className="select-all text-bone">{SITE.contactEmail}</span></p>
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+import { Link } from 'react-router-dom'
+import { useSEO } from '../lib/seo.js'
+
+export default function NotFound() {
+  useSEO({ title: 'Page not found', description: 'That page does not exist.', path: '/404' })
+  return (
+    <div className="wrap py-24 sm:py-32">
+      <h1 className="h-display text-7xl sm:text-9xl">404</h1>
+      <p className="mt-4 text-smoke">Nothing here. It probably sold out.</p>
+      <Link to="/shop" className="btn btn-solid mt-8">Back to shop</Link>
+    </div>
+  )
+}
+
+import { useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import ProductCard from '../components/ProductCard.jsx'
+import { CATEGORY_LABELS, PRODUCTS, money, stockState } from '../lib/format.js'
+import { useSEO } from '../lib/seo.js'
+import { useNow } from '../lib/useCountdown.js'
+
+const SORTS = {
+  featured: 'Featured',
+  'price-asc': 'Price: low to high',
+  'price-desc': 'Price: high to low',
+  name: 'Name A to Z',
+}
+
+const ALL_SIZES = [...new Set(PRODUCTS.flatMap((p) => p.sizes))].sort((a, b) => {
+  const order = ['S', 'M', 'L', 'XL', 'XXL']
+  const ia = order.indexOf(a)
+  const ib = order.indexOf(b)
+  if (ia === -1 && ib === -1) return a.localeCompare(b)
+  if (ia === -1) return 1
+  if (ib === -1) return -1
+  return ia - ib
+})
+const MAX_PRICE = Math.ceil(Math.max(...PRODUCTS.map((p) => p.price)) / 500) * 500
+const CATEGORIES = [...new Set(PRODUCTS.map((p) => p.category))]
+
+export default function Shop() {
+  useSEO({
+    title: 'Shop',
+    description: 'Shop hoodies, tees, long sleeves, beanies, posters and limited drops. Small runs. Ships worldwide.',
+    path: '/shop',
+  })
+  const now = useNow(1000)
+  const [params, setParams] = useSearchParams()
+  const category = params.get('c') || 'all'
+  const size = params.get('size') || ''
+  const sort = params.get('sort') || 'featured'
+  const max = Number(params.get('max')) || MAX_PRICE
+  const inStock = params.get('stock') === '1'
+
+  function set(key, value) {
+    const next = new URLSearchParams(params)
+    if (value === '' || value === null || value === false) next.delete(key)
+    else next.set(key, value)
+    setParams(next, { replace: true })
+  }
+
+  const list = useMemo(() => {
+    let out = PRODUCTS.filter(
+      (p) =>
+        (category === 'all' || p.category === category) &&
+        (!size || p.sizes.includes(size)) &&
+        p.price <= max &&
+        (!inStock || stockState(p) !== 'sold-out')
+    )
+    if (sort === 'price-asc') out = [...out].sort((a, b) => a.price - b.price)
+    if (sort === 'price-desc') out = [...out].sort((a, b) => b.price - a.price)
+    if (sort === 'name') out = [...out].sort((a, b) => a.name.localeCompare(b.name))
+    return out
+  }, [category, size, sort, max, inStock])
+
+  const active = category !== 'all' || size || max !== MAX_PRICE || inStock
+
+  return (
+    <div className="wrap pt-10 sm:pt-16">
+      <h1 className="h-display text-6xl sm:text-8xl">Shop</h1>
+
+      <section aria-label="Filters" className="mt-8 grid gap-6 border-y border-smoke/30 py-6 lg:grid-cols-[1fr_auto]">
+        <div className="space-y-5">
+          <div>
+            <p className="label mb-2">Category</p>
+            <div className="flex flex-wrap gap-2">
+              <button className="chip" aria-pressed={category === 'all'} onClick={() => set('c', '')}>All</button>
+              {CATEGORIES.map((c) => (
+                <button key={c} className="chip" aria-pressed={category === c} onClick={() => set('c', c)}>
+                  {CATEGORY_LABELS[c] || c}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="label mb-2">Size</p>
+            <div className="flex flex-wrap gap-2">
+              <button className="chip" aria-pressed={!size} onClick={() => set('size', '')}>Any</button>
+              {ALL_SIZES.map((s) => (
+                <button key={s} className="chip" aria-pressed={size === s} onClick={() => set('size', s)}>{s}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-3 lg:w-[34rem]">
+          <div>
+            <label htmlFor="max-price" className="label mb-2 block">Max price: {money(max)}</label>
+            <input
+              id="max-price"
+              type="range"
+              min="500"
+              max={MAX_PRICE}
+              step="500"
+              value={max}
+              onChange={(e) => set('max', Number(e.target.value) === MAX_PRICE ? '' : e.target.value)}
+              className="h-10 w-full"
+            />
+          </div>
+          <div>
+            <label htmlFor="sort" className="label mb-2 block">Sort</label>
+            <select id="sort" className="field" value={sort} onChange={(e) => set('sort', e.target.value === 'featured' ? '' : e.target.value)}>
+              {Object.entries(SORTS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <label htmlFor="in-stock" className="flex min-h-[48px] cursor-pointer items-center gap-3">
+              <input id="in-stock" type="checkbox" checked={inStock} onChange={(e) => set('stock', e.target.checked ? '1' : '')} className="h-5 w-5 accent-[rgb(var(--accent))]" />
+              <span className="text-[13px]">In stock only</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div className="mt-4 flex items-center justify-between text-[13px] text-smoke" role="status" aria-live="polite">
+        <p>{list.length} {list.length === 1 ? 'item' : 'items'}</p>
+        {active && <button className="underline underline-offset-4 hover:text-acid" onClick={() => setParams({}, { replace: true })}>Clear filters</button>}
+      </div>
+
+      {list.length === 0 ? (
+        <div className="py-24">
+          <p className="h-display text-5xl text-smoke">Nothing matches.</p>
+          <button className="btn mt-6" onClick={() => setParams({}, { replace: true })}>Clear filters</button>
+        </div>
+      ) : (
+        <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 lg:grid-cols-4 lg:gap-x-5">
+          {list.map((p, i) => <ProductCard key={p.id} product={p} now={now} eager={i < 4} />)}
+        </div>
+      )}
+    </div>
+  )
+}
+
+import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { useCart } from '../lib/cart.jsx'
+import { useSEO } from '../lib/seo.js'
+
+export default function CheckoutResult({ status }) {
+  const { clear, setOpen } = useCart()
+  const ok = status === 'success'
+
+  useSEO({
+    title: ok ? 'Order confirmed' : 'Checkout cancelled',
+    description: ok ? 'Your order is confirmed.' : 'Your checkout was cancelled. Your cart is still saved.',
+    path: ok ? '/checkout/success' : '/checkout/cancelled',
+  })
+
+  useEffect(() => {
+    if (ok) clear()
+  }, [ok]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="wrap py-24 sm:py-32">
+      <h1 className="h-display text-6xl sm:text-9xl">{ok ? <>Locked in<span className="text-acid">.</span></> : 'Cancelled.'}</h1>
+      <p className="mt-6 max-w-lg text-smoke">
+        {ok
+          ? 'Thanks for your order. A receipt and tracking details are on their way to your email.'
+          : 'No charge was made. Your cart is still saved.'}
+      </p>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <Link to="/shop" className="btn btn-solid">Back to shop</Link>
+        {!ok && <button className="btn" onClick={() => setOpen(true)}>Open cart</button>}
+      </div>
+    </div>
+  )
+}
+
+import { Link } from 'react-router-dom'
+import Countdown from '../components/Countdown.jsx'
+import Marquee from '../components/Marquee.jsx'
+import ProductCard from '../components/ProductCard.jsx'
+import SignupForm from '../components/SignupForm.jsx'
+import { MARQUEE, NEXT_DROP, SITE } from '../data/site.config.js'
+import { PRODUCTS } from '../lib/format.js'
+import { useSEO } from '../lib/seo.js'
+import { useNow } from '../lib/useCountdown.js'
+
+export default function Home() {
+  useSEO({
+    title: '',
+    description: `${SITE.storeName}: heavyweight hoodies, tees, beanies and limited drops. Small runs, no restocks. Ships worldwide.`,
+    path: '/',
+  })
+  const now = useNow(1000)
+  const featured = PRODUCTS.filter((p) => p.featured).slice(0, 4)
+
+  return (
+    <>
+      {/* HERO */}
+      <section className="relative isolate overflow-hidden border-b border-smoke/30" aria-labelledby="hero-title">
+        <div className="smoke -left-24 top-10 h-72 w-72 bg-smoke sm:h-[28rem] sm:w-[28rem]" aria-hidden="true" />
+        <div className="smoke -right-20 bottom-0 h-64 w-64 bg-acid/50 sm:h-96 sm:w-96" style={{ animationDelay: '-8s' }} aria-hidden="true" />
+        <p
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-6 left-0 -z-10 select-none whitespace-nowrap font-display text-[34vw] font-black uppercase leading-none text-transparent"
+          style={{ WebkitTextStroke: '1px rgba(233,231,223,0.09)' }}
+        >
+          2016
+        </p>
+
+        <div className="wrap flex min-h-[calc(100svh-4rem)] flex-col justify-center gap-8 py-14 sm:py-20">
+          <p className="label !text-acid">● Next drop</p>
+
+          <h1 id="hero-title" className="h-display text-[clamp(3.2rem,15vw,11rem)]">
+            <span className="glitch block" data-text={NEXT_DROP.name}>{NEXT_DROP.name}</span>
+          </h1>
+
+          <p className="max-w-xl text-[15px] text-smoke sm:text-base">{NEXT_DROP.blurb}</p>
+
+          <Countdown target={NEXT_DROP.at} />
+
+          <div className="flex flex-wrap gap-3">
+            <Link to={`/product/${NEXT_DROP.productSlug}`} className="btn btn-solid">View the drop</Link>
+            <Link to="/shop" className="btn">Shop all</Link>
+          </div>
+        </div>
+      </section>
+
+      <Marquee items={MARQUEE} />
+
+      {/* FEATURED */}
+      <section className="wrap pt-16 sm:pt-24" aria-labelledby="featured-title">
+        <div className="mb-8 flex items-end justify-between gap-4">
+          <h2 id="featured-title" className="h-display text-5xl sm:text-7xl">Featured</h2>
+          <Link to="/shop" className="label underline underline-offset-4 hover:text-acid">See all →</Link>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-8 lg:grid-cols-4 lg:gap-x-5">
+          {featured.map((p, i) => (
+            <ProductCard key={p.id} product={p} now={now} eager={i < 2} />
+          ))}
+        </div>
+      </section>
+
+      {/* SIGNUP */}
+      <section className="wrap pt-20 sm:pt-28" aria-labelledby="alerts-title">
+        <div className="grid gap-8 border border-smoke/40 bg-coal p-6 sm:p-10 md:grid-cols-2">
+          <div>
+            <p className="label !text-acid">Don't miss it</p>
+            <h2 id="alerts-title" className="h-display mt-2 text-5xl sm:text-6xl">Get the drop<br />before it's gone</h2>
+            <p className="mt-4 max-w-sm text-smoke">Text or email, your pick. One message when a drop goes live. That's it.</p>
+          </div>
+          <div className="self-center"><SignupForm source="home" /></div>
+        </div>
+      </section>
+    </>
+  )
+}
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#0b0b0a"/><path d="M14 44 L26 20 L32 34 L38 20 L50 44" fill="none" stroke="#b6ff1a" stroke-width="5" stroke-linecap="square"/></svg>
+
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Replace YOUR-DOMAIN.com with your domain. Regenerate the product URLs with: npm run sitemap -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://YOUR-DOMAIN.com/</loc><priority>1.0</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/shop</loc><priority>0.9</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/static-heavyweight-hoodie</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/ash-boxy-tee</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/night-shift-long-sleeve</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/soot-beanie</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/carbon-tote</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/residue-sticker-pack</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/fog-poster</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/product/tour-crew-jacket</loc><priority>0.8</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/lookbook</loc><priority>0.6</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/about</loc><priority>0.5</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/policy/shipping</loc><priority>0.3</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/policy/refunds</loc><priority>0.3</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/policy/privacy</loc><priority>0.3</priority></url>
+  <url><loc>https://YOUR-DOMAIN.com/policy/terms</loc><priority>0.3</priority></url>
+</urlset>
+
+User-agent: *
+Allow: /
+
+Sitemap: https://YOUR-DOMAIN.com/sitemap.xml
+
+// Stripe Checkout session creator (Vercel serverless function; also works on Netlify with small changes, see README).
+//
+// SECURITY: the browser only sends { id, size, qty } and an optional discount code.
+// Prices, stock, drop locks, shipping and discounts are ALL recomputed here from the same JSON files
+// the website uses, so a customer cannot change what they pay by editing the page.
+import Stripe from 'stripe'
+import catalog from '../src/data/products.json' with { type: 'json' }
+import commerce from '../src/data/commerce.json' with { type: 'json' }
+
+const MAX_LINES = 20
+
+function bad(res, status, error) {
+  return res.status(status).json({ error })
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST')
+    return bad(res, 405, 'Method not allowed')
+  }
+
+  const key = process.env.STRIPE_SECRET_KEY
+  if (!key || key.includes('REPLACE_ME')) {
+    return bad(res, 500, 'Checkout is not configured yet. Add STRIPE_SECRET_KEY in your hosting environment settings.')
+  }
+  const stripe = new Stripe(key)
+
+  const body = typeof req.body === 'string' ? safeParse(req.body) : req.body
+  const items = body?.items
+  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_LINES) {
+    return bad(res, 400, 'Your cart is empty or invalid.')
+  }
+
+  const now = Date.now()
+  const line_items = []
+  let subtotal = 0
+
+  for (const it of items) {
+    const product = catalog.products.find((p) => p.id === it?.id)
+    if (!product) return bad(res, 400, 'An item in your cart no longer exists.')
+    if (product.dropAt && new Date(product.dropAt).getTime() > now) {
+      return bad(res, 400, `${product.name} has not dropped yet.`)
+    }
+    if (product.stock <= 0) return bad(res, 400, `${product.name} is sold out.`)
+    if (!product.sizes.includes(it.size)) return bad(res, 400, `Invalid size for ${product.name}.`)
+    const qty = Number.isInteger(it.qty) ? it.qty : 0
+    if (qty < 1 || qty > Math.min(product.stock, 10)) {
+      return bad(res, 400, `Invalid quantity for ${product.name}.`)
+    }
+
+    subtotal += product.price * qty
+    line_items.push({
+      quantity: qty,
+      price_data: {
+        currency: commerce.currency,
+        unit_amount: product.price,
+        product_data: {
+          name: product.sizes[0] === 'OS' ? product.name : `${product.name} (${it.size})`,
+          metadata: { product_id: product.id, size: it.size },
+        },
+      },
+    })
+  }
+
+  // Discount code (validated against commerce.json only)
+  let discounts
+  let discountAmount = 0
+  const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
+  if (code) {
+    const d = commerce.discountCodes[code]
+    if (!d) return bad(res, 400, 'That discount code is not valid.')
+    const coupon = await stripe.coupons.create({ percent_off: d.value, duration: 'once', name: code })
+    discounts = [{ coupon: coupon.id }]
+    discountAmount = Math.round((subtotal * d.value) / 100)
+  }
+
+  // Shipping: free over the threshold (measured AFTER discount), otherwise flat rate
+  const shippingAmount = subtotal - discountAmount >= commerce.shipping.freeOver ? 0 : commerce.shipping.flat
+
+  const origin = process.env.SITE_URL || req.headers.origin || `https://${req.headers.host}`
+
+  try {
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items,
+      discounts,
+      shipping_address_collection: { allowed_countries: commerce.allowedCountries },
+      shipping_options: [
+        {
+          shipping_rate_data: {
+            type: 'fixed_amount',
+            fixed_amount: { amount: shippingAmount, currency: commerce.currency },
+            display_name: shippingAmount === 0 ? 'Free shipping' : 'Standard shipping',
+            delivery_estimate: {
+              minimum: { unit: 'business_day', value: 5 },
+              maximum: { unit: 'business_day', value: 14 },
+            },
+          },
+        },
+      ],
+      phone_number_collection: { enabled: true },
+      // Guest checkout: Stripe collects the email itself. No account needed.
+      success_url: `${origin}/checkout/success`,
+      cancel_url: `${origin}/checkout/cancelled`,
+    })
+    return res.status(200).json({ url: session.url })
+  } catch (err) {
+    console.error('Stripe error:', err?.message)
+    return bad(res, 502, 'Could not start checkout. Please try again.')
+  }
+}
+
+function safeParse(s) {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
+}
+
+// Regenerates public/sitemap.xml and public/robots.txt from products.json.
+// Usage: SITE_URL=https://your-domain.com npm run sitemap
+import { readFileSync, writeFileSync } from 'node:fs'
+
+const site = (process.env.SITE_URL || 'https://YOUR-DOMAIN.com').replace(/\/$/, '')
+const { products } = JSON.parse(readFileSync(new URL('../src/data/products.json', import.meta.url)))
+
+const pages = [
+  ['/', 1.0], ['/shop', 0.9],
+  ...products.map((p) => [`/product/${p.slug}`, 0.8]),
+  ['/lookbook', 0.6], ['/about', 0.5],
+  ['/policy/shipping', 0.3], ['/policy/refunds', 0.3], ['/policy/privacy', 0.3], ['/policy/terms', 0.3],
+]
+const today = new Date().toISOString().slice(0, 10)
+const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages.map(([p, pr]) => `  <url><loc>${site}${p}</loc><lastmod>${today}</lastmod><priority>${pr}</priority></url>`).join('\n')}
+</urlset>
+`
+writeFileSync(new URL('../public/sitemap.xml', import.meta.url), xml)
+writeFileSync(new URL('../public/robots.txt', import.meta.url), `User-agent: *\nAllow: /\n\nSitemap: ${site}/sitemap.xml\n`)
+console.log(`Wrote sitemap with ${pages.length} URLs for ${site}`)
