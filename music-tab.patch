@@ -1,0 +1,394 @@
+diff --git a/README.md b/README.md
+index 738faa1..d7938ba 100644
+--- a/README.md
++++ b/README.md
+@@ -18,6 +18,9 @@ Checkout needs steps 3 and 4 below.
+ | --- | --- |
+ | `src/data/products.json` | Products, prices (in **cents**), sizes, stock, photos, drop locks |
+ | `src/data/site.config.js` | Brand name, next drop countdown, socials, bio, FAQ, lookbook, policies, "Unofficial fan merch" switch |
++| `src/data/music.json` | Music tab: releases, popular tracks (YouTube IDs), SoundCloud link, optional Spotify album IDs and cover image paths |
++
++**Music tab:** players (SoundCloud, YouTube, Spotify) only load when a visitor presses play. No cover art is bundled, because it belongs to the artist. Releases show an original placeholder until you add a cover you have the right to use (`"cover": "/img/covers/the-peak.webp"`). The streaming players show the official cover art themselves. See the `_readme` note at the top of `music.json`.
+ | `src/data/commerce.json` | Discount codes, shipping rates, allowed countries. Shared with the checkout server |
+ 
+ Things to know:
+diff --git a/public/sitemap.xml b/public/sitemap.xml
+index f76d19d..65eb50c 100644
+--- a/public/sitemap.xml
++++ b/public/sitemap.xml
+@@ -11,6 +11,7 @@
+   <url><loc>https://YOUR-DOMAIN.com/product/residue-sticker-pack</loc><priority>0.8</priority></url>
+   <url><loc>https://YOUR-DOMAIN.com/product/fog-poster</loc><priority>0.8</priority></url>
+   <url><loc>https://YOUR-DOMAIN.com/product/tour-crew-jacket</loc><priority>0.8</priority></url>
++  <url><loc>https://YOUR-DOMAIN.com/music</loc><priority>0.7</priority></url>
+   <url><loc>https://YOUR-DOMAIN.com/lookbook</loc><priority>0.6</priority></url>
+   <url><loc>https://YOUR-DOMAIN.com/about</loc><priority>0.5</priority></url>
+   <url><loc>https://YOUR-DOMAIN.com/policy/shipping</loc><priority>0.3</priority></url>
+diff --git a/scripts/sitemap.mjs b/scripts/sitemap.mjs
+index cbd0326..17c279a 100644
+--- a/scripts/sitemap.mjs
++++ b/scripts/sitemap.mjs
+@@ -8,7 +8,7 @@ const { products } = JSON.parse(readFileSync(new URL('../src/data/products.json'
+ const pages = [
+   ['/', 1.0], ['/shop', 0.9],
+   ...products.map((p) => [`/product/${p.slug}`, 0.8]),
+-  ['/lookbook', 0.6], ['/about', 0.5],
++  ['/music', 0.7], ['/lookbook', 0.6], ['/about', 0.5],
+   ['/policy/shipping', 0.3], ['/policy/refunds', 0.3], ['/policy/privacy', 0.3], ['/policy/terms', 0.3],
+ ]
+ const today = new Date().toISOString().slice(0, 10)
+diff --git a/src/App.jsx b/src/App.jsx
+index ba0ee9a..aa10422 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -7,6 +7,7 @@ import Home from './pages/Home.jsx'
+ const Shop = lazy(() => import('./pages/Shop.jsx'))
+ const Product = lazy(() => import('./pages/Product.jsx'))
+ const Lookbook = lazy(() => import('./pages/Lookbook.jsx'))
++const Music = lazy(() => import('./pages/Music.jsx'))
+ const About = lazy(() => import('./pages/About.jsx'))
+ const Policy = lazy(() => import('./pages/Policy.jsx'))
+ const CheckoutResult = lazy(() => import('./pages/CheckoutResult.jsx'))
+@@ -20,6 +21,7 @@ export default function App() {
+           <Route index element={<Home />} />
+           <Route path="shop" element={<Shop />} />
+           <Route path="product/:slug" element={<Product />} />
++          <Route path="music" element={<Music />} />
+           <Route path="lookbook" element={<Lookbook />} />
+           <Route path="about" element={<About />} />
+           <Route path="policy/:key" element={<Policy />} />
+diff --git a/src/components/AlbumArt.jsx b/src/components/AlbumArt.jsx
+new file mode 100644
+index 0000000..dc9b109
+--- /dev/null
++++ b/src/components/AlbumArt.jsx
+@@ -0,0 +1,81 @@
++import { useId } from 'react'
++
++/**
++ * Cover slot for a release.
++ * - If the release has a "cover" path in music.json, that image is shown.
++ * - Otherwise an ORIGINAL abstract placeholder is generated. It is not the real cover.
++ * PLUG IN: only add real cover files you have the right to use (for example from the artist).
++ */
++export default function AlbumArt({ release, className = '' }) {
++  const uid = useId().replace(/:/g, '')
++
++  if (release.cover) {
++    return (
++      <img
++        src={release.cover}
++        alt={`${release.title} cover art`}
++        width="600"
++        height="600"
++        loading="lazy"
++        decoding="async"
++        className={`h-full w-full object-cover ${className}`}
++      />
++    )
++  }
++
++  const r = (n) => {
++    const x = Math.sin(release.seed * 777 + n * 91.7) * 43758.5453
++    return x - Math.floor(x)
++  }
++  const words = release.title.toUpperCase().split(' ')
++  const longest = Math.max(...words.map((w) => w.length))
++  const size = longest <= 5 ? 92 : longest <= 8 ? 72 : 56
++  const startY = 215 - ((words.length - 1) * size * 0.9) / 2
++
++  return (
++    <svg
++      viewBox="0 0 400 400"
++      role="img"
++      aria-label={`${release.title} (${release.year}), placeholder cover`}
++      className={`block h-full w-full ${className}`}
++      preserveAspectRatio="xMidYMid slice"
++    >
++      <defs>
++        <linearGradient id={`g-${uid}`} x1="0" y1="0" x2="1" y2="1">
++          <stop offset="0%" stopColor={`hsl(${70 + r(1) * 50} 5% ${14 + r(2) * 8}%)`} />
++          <stop offset="100%" stopColor="#0b0b0a" />
++        </linearGradient>
++        <filter id={`b-${uid}`}>
++          <feGaussianBlur stdDeviation="26" />
++        </filter>
++        <filter id={`n-${uid}`} x="0" y="0" width="100%" height="100%">
++          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed={release.seed} />
++          <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0" />
++        </filter>
++      </defs>
++      <rect width="400" height="400" fill={`url(#g-${uid})`} />
++      <g filter={`url(#b-${uid})`}>
++        <ellipse cx={60 + r(3) * 280} cy={60 + r(4) * 280} rx={70 + r(5) * 70} ry={60 + r(6) * 70} fill="#8a8a82" opacity="0.3" />
++        <ellipse cx={60 + r(7) * 280} cy={60 + r(8) * 280} rx={40 + r(9) * 50} ry={40 + r(10) * 50} fill="rgb(var(--accent))" opacity="0.2" />
++      </g>
++      {words.map((w, i) => (
++        <text
++          key={i}
++          x="30"
++          y={startY + i * size * 0.9}
++          fontFamily="'Big Shoulders Display', Impact, sans-serif"
++          fontWeight="900"
++          fontSize={size}
++          fill="#e9e7df"
++          letterSpacing="1"
++        >
++          {w}
++        </text>
++      ))}
++      <text x="30" y="368" fontFamily="'IBM Plex Mono', monospace" fontSize="12" letterSpacing="4" fill="rgba(233,231,223,0.55)">
++        {`${release.year} / PLACEHOLDER COVER`}
++      </text>
++      <rect width="400" height="400" filter={`url(#n-${uid})`} opacity="0.14" />
++    </svg>
++  )
++}
+diff --git a/src/components/Layout.jsx b/src/components/Layout.jsx
+index b5e922d..e2b70a9 100644
+--- a/src/components/Layout.jsx
++++ b/src/components/Layout.jsx
+@@ -7,6 +7,7 @@ import SignupForm from './SignupForm.jsx'
+ 
+ const NAV = [
+   { to: '/shop', label: 'Shop' },
++  { to: '/music', label: 'Music' },
+   { to: '/lookbook', label: 'Lookbook' },
+   { to: '/about', label: 'About' },
+ ]
+@@ -94,6 +95,7 @@ function Footer() {
+           <p className="label mb-3">Store</p>
+           <ul className="space-y-2">
+             <li><Link className="hover:text-acid" to="/shop">Shop</Link></li>
++            <li><Link className="hover:text-acid" to="/music">Music</Link></li>
+             <li><Link className="hover:text-acid" to="/lookbook">Lookbook</Link></li>
+             <li><Link className="hover:text-acid" to="/about">About</Link></li>
+             <li><Link className="hover:text-acid" to="/about#faq">FAQ</Link></li>
+diff --git a/src/data/music.json b/src/data/music.json
+new file mode 100644
+index 0000000..8e047d6
+--- /dev/null
++++ b/src/data/music.json
+@@ -0,0 +1,31 @@
++{
++  "_readme": "EDIT THIS FILE to manage the Music tab. Release list and track counts come from public listings on Last.fm; double check titles/years against the artist's official pages. COVERS: no cover images are included (they belong to the artist/label). To show a cover, put a file you have the right to use in /public/img/covers/ and set \"cover\": \"/img/covers/the-peak.webp\". The official Spotify/SoundCloud/YouTube players also show the artist's own cover art when they load. SPOTIFY: from the album page in Spotify choose Share > Copy link, take the ID after /album/ (before the ?), and paste it into \"spotifyId\" to get an in-page Spotify player for that release. YOUTUBE: \"youtubeId\" is the 11 characters after v= in a video URL. Verify each video is the artist's official upload and that embedding is allowed.",
++  "artist": {
++    "name": "smokedope2016",
++    "soundcloud": "https://soundcloud.com/smokedope2016",
++    "instagram": "https://www.instagram.com/smokedope20166/",
++    "twitter": "https://twitter.com/smokedope2016"
++  },
++  "popularTracks": [
++    { "title": "In Da Party", "youtubeId": "HixKtVjqMDE" },
++    { "title": "IM NOT GOD BUT I WISH I WAS (feat. Joeyy)", "youtubeId": "9goSACPqLao" },
++    { "title": "White Owls", "youtubeId": "Q_M6pWT-_gg" },
++    { "title": "Eastbay", "youtubeId": "50WHdbKsa_o" },
++    { "title": "Polo", "youtubeId": "YWDrCC0i62U" },
++    { "title": "Gnarly", "youtubeId": "fCyDqPzeECE" },
++    { "title": "Know Dat", "youtubeId": "AGrobCziowo" },
++    { "title": "icey soles", "youtubeId": "QCz-Xem4M-Y" },
++    { "title": "Khalifa", "youtubeId": "SLoLQLyZmEQ" },
++    { "title": "Sleep", "youtubeId": "tNLf9TOAkEk" }
++  ],
++  "releases": [
++    { "id": "the-comedown", "title": "The Comedown", "year": 2026, "tracks": 13, "seed": 1, "cover": "", "spotifyId": "" },
++    { "id": "the-peak", "title": "The Peak", "year": 2025, "tracks": 13, "seed": 2, "cover": "", "spotifyId": "" },
++    { "id": "the-comeup", "title": "The Comeup", "year": 2024, "tracks": 13, "seed": 3, "cover": "", "spotifyId": "" },
++    { "id": "smokeshop-2", "title": "Smokeshop 2", "year": 2023, "tracks": 8, "seed": 4, "cover": "", "spotifyId": "" },
++    { "id": "bando", "title": "Bando", "year": 2023, "tracks": 7, "seed": 5, "cover": "", "spotifyId": "" },
++    { "id": "2016", "title": "2016", "year": 2023, "tracks": 8, "seed": 6, "cover": "", "spotifyId": "" },
++    { "id": "smokeshop", "title": "Smokeshop", "year": 2022, "tracks": 9, "seed": 7, "cover": "", "spotifyId": "" },
++    { "id": "xtc", "title": "XTC", "year": 2022, "tracks": 5, "seed": 8, "cover": "", "spotifyId": "" }
++  ]
++}
+diff --git a/src/pages/Music.jsx b/src/pages/Music.jsx
+new file mode 100644
+index 0000000..6213417
+--- /dev/null
++++ b/src/pages/Music.jsx
+@@ -0,0 +1,185 @@
++import { useRef, useState } from 'react'
++import AlbumArt from '../components/AlbumArt.jsx'
++import music from '../data/music.json'
++import { SITE } from '../data/site.config.js'
++import { useSEO } from '../lib/seo.js'
++
++const ACCENT_HEX = 'b6ff1a' // keep in step with --accent in index.css (used by the SoundCloud player color)
++const ARTIST = music.artist.name
++
++// ---------- player sources ----------
++const SOUNDCLOUD = { type: 'soundcloud', label: 'SoundCloud', title: `${ARTIST} on SoundCloud` }
++
++function embedSrc(s) {
++  if (s.type === 'youtube') {
++    return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(s.id)}?autoplay=1&rel=0&modestbranding=1`
++  }
++  if (s.type === 'spotify') {
++    return `https://open.spotify.com/embed/album/${encodeURIComponent(s.id)}?theme=0`
++  }
++  return `https://w.soundcloud.com/player/?url=${encodeURIComponent(music.artist.soundcloud)}&color=%23${ACCENT_HEX}&auto_play=false&hide_related=true&show_comments=false&show_teaser=false`
++}
++
++function boxClass(s) {
++  if (s.type === 'youtube') return 'aspect-video'
++  if (s.type === 'spotify') return 'h-[352px]'
++  return 'h-[450px]'
++}
++
++/**
++ * Click-to-load player. Nothing from SoundCloud / YouTube / Spotify is requested until the
++ * visitor presses play, which keeps the page fast and avoids third-party tracking up front.
++ */
++function Player({ source, active, onPlay }) {
++  return (
++    <div className={`relative w-full border border-smoke/30 bg-coal ${boxClass(source)}`}>
++      {active ? (
++        <iframe
++          key={embedSrc(source)}
++          src={embedSrc(source)}
++          title={`Audio player: ${source.title}`}
++          className="absolute inset-0 h-full w-full border-0"
++          allow="autoplay; encrypted-media; clipboard-write; fullscreen; picture-in-picture"
++          allowFullScreen
++          referrerPolicy="strict-origin-when-cross-origin"
++        />
++      ) : (
++        <div className="absolute inset-0 flex flex-col items-start justify-end gap-4 p-5 sm:p-8">
++          <p className="label !text-acid">{source.label}</p>
++          <p className="h-display text-4xl sm:text-6xl">{source.title}</p>
++          <button className="btn btn-solid" onClick={onPlay}>
++            ▶ Load player
++          </button>
++          <p className="text-[12px] text-smoke">The player loads from {source.label} when you press this.</p>
++        </div>
++      )}
++    </div>
++  )
++}
++
++function searchLinks(title) {
++  const q = encodeURIComponent(`${ARTIST} ${title}`)
++  return [
++    ['Spotify', `https://open.spotify.com/search/${q}`],
++    ['Apple Music', `https://music.apple.com/search?term=${q}`],
++    ['YouTube', `https://www.youtube.com/results?search_query=${q}`],
++  ]
++}
++
++export default function Music() {
++  useSEO({
++    title: 'Music',
++    description: `Listen to ${ARTIST}: stream popular tracks and browse the discography, including The Comedown, The Peak and The Comeup.`,
++    path: '/music',
++  })
++
++  const [source, setSource] = useState(SOUNDCLOUD)
++  const [active, setActive] = useState(false)
++  const [announce, setAnnounce] = useState('')
++  const playerRef = useRef(null)
++
++  function choose(next) {
++    setSource(next)
++    setActive(true)
++    setAnnounce(`Loaded ${next.title}`)
++    playerRef.current?.scrollIntoView({ block: 'nearest' })
++  }
++
++  return (
++    <div className="wrap pt-10 sm:pt-16">
++      <h1 className="h-display text-6xl sm:text-8xl">Music</h1>
++      <p className="mt-3 max-w-md text-smoke">Press play. Everything streams from the original platforms.</p>
++
++      {/* PLAYER + TRACK LIST */}
++      <section className="mt-10 grid gap-8 lg:grid-cols-[1.4fr_1fr]" aria-labelledby="listen-title">
++        <div className="min-w-0" ref={playerRef}>
++          <h2 id="listen-title" className="sr-only">Listen</h2>
++          <Player key={source.type + (source.id || '')} source={source} active={active} onPlay={() => choose(source)} />
++          <p role="status" aria-live="polite" className="sr-only">{announce}</p>
++        </div>
++
++        <div className="min-w-0">
++          <h2 className="label mb-3">Popular tracks</h2>
++          <ol className="divide-y divide-smoke/20 border-y border-smoke/30">
++            <li>
++              <button
++                className="flex min-h-[52px] w-full items-center gap-4 px-1 py-3 text-left hover:text-acid"
++                aria-current={active && source.type === 'soundcloud' ? 'true' : undefined}
++                onClick={() => choose(SOUNDCLOUD)}
++              >
++                <span className="w-6 text-smoke" aria-hidden="true">★</span>
++                <span className="flex-1">All tracks (SoundCloud)</span>
++              </button>
++            </li>
++            {music.popularTracks.map((t, i) => {
++              const isOn = active && source.type === 'youtube' && source.id === t.youtubeId
++              return (
++                <li key={t.youtubeId}>
++                  <button
++                    className={`flex min-h-[52px] w-full items-center gap-4 px-1 py-3 text-left hover:text-acid ${isOn ? 'text-acid' : ''}`}
++                    aria-current={isOn ? 'true' : undefined}
++                    onClick={() => choose({ type: 'youtube', label: 'YouTube', id: t.youtubeId, title: t.title })}
++                  >
++                    <span className="w-6 tabular-nums text-smoke" aria-hidden="true">{isOn ? '▶' : String(i + 1).padStart(2, '0')}</span>
++                    <span className="min-w-0 flex-1 break-words">{t.title}</span>
++                    <span className="label shrink-0 !text-[10px]">YouTube</span>
++                  </button>
++                </li>
++              )
++            })}
++          </ol>
++        </div>
++      </section>
++
++      {/* DISCOGRAPHY */}
++      <section className="pt-20 sm:pt-28" aria-labelledby="disco-title">
++        <h2 id="disco-title" className="h-display text-5xl sm:text-7xl">Discography</h2>
++        <ul className="mt-8 grid grid-cols-2 gap-x-3 gap-y-10 md:grid-cols-3 lg:grid-cols-4 lg:gap-x-5">
++          {music.releases.map((rel) => (
++            <li key={rel.id} className="min-w-0">
++              <div className="aspect-square overflow-hidden border border-smoke/25 bg-coal">
++                <AlbumArt release={rel} />
++              </div>
++              <h3 className="mt-3 font-display text-2xl font-black uppercase leading-tight">{rel.title}</h3>
++              <p className="label mt-1">{rel.year} · {rel.tracks} {rel.tracks === 1 ? 'track' : 'tracks'}</p>
++
++              {rel.spotifyId && (
++                <button
++                  className="btn btn-solid mt-3 w-full !min-h-[44px] !px-3"
++                  onClick={() => choose({ type: 'spotify', label: 'Spotify', id: rel.spotifyId, title: rel.title })}
++                >
++                  ▶ Play here
++                </button>
++              )}
++
++              <p className="label mb-1 mt-3 !text-[10px]">Find on</p>
++              <ul className="flex flex-wrap gap-1.5">
++                {searchLinks(rel.title).map(([name, href]) => (
++                  <li key={name}>
++                    <a className="chip !min-h-[36px] !px-2 !text-[11px]" href={href} target="_blank" rel="noopener noreferrer">
++                      {name}<span className="sr-only"> (opens in a new tab), {rel.title}</span>
++                    </a>
++                  </li>
++                ))}
++              </ul>
++            </li>
++          ))}
++        </ul>
++      </section>
++
++      <section className="pt-16" aria-label="Artist links">
++        <p className="label mb-3">{ARTIST}</p>
++        <ul className="flex flex-wrap gap-x-6 gap-y-2">
++          <li><a className="hover:text-acid" href={music.artist.soundcloud} target="_blank" rel="noopener noreferrer">SoundCloud ↗</a></li>
++          <li><a className="hover:text-acid" href={music.artist.instagram} target="_blank" rel="noopener noreferrer">Instagram ↗</a></li>
++          <li><a className="hover:text-acid" href={music.artist.twitter} target="_blank" rel="noopener noreferrer">X / Twitter ↗</a></li>
++        </ul>
++        {SITE.unofficial && (
++          <p className="mt-6 max-w-lg text-[12px] text-smoke">
++            Unofficial fan site. All music and artwork belong to {ARTIST} and are streamed from the original platforms.
++          </p>
++        )}
++      </section>
++    </div>
++  )
++}
