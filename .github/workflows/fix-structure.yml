@@ -1,0 +1,17 @@
+name: Fix folder structure
+on: workflow_dispatch
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Move files into their folders
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          bash fix-structure.sh
+          git rm -q -f fix-structure.sh
+          git commit -q --amend --no-edit
+          git push
