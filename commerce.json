@@ -1,0 +1,10 @@
+{
+  "_readme": "Shared by the website AND the checkout server (api/create-checkout-session.js), so codes and shipping are defined once. Amounts in cents.",
+  "currency": "usd",
+  "discountCodes": {
+    "SMOKE10": { "type": "percent", "value": 10, "label": "10% off" },
+    "FIRSTDROP": { "type": "percent", "value": 15, "label": "15% off" }
+  },
+  "shipping": { "freeOver": 10000, "flat": 800 },
+  "allowedCountries": ["US", "CA", "GB", "IE", "AU", "NZ", "DE", "FR", "NL", "BE", "LU", "ES", "PT", "IT", "AT", "CH", "SE", "NO", "DK", "FI", "PL", "CZ", "SK", "HU", "SI", "HR", "RO", "BG", "GR", "EE", "LV", "LT", "JP", "KR", "SG", "MX", "BR"]
+}
